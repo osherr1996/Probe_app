@@ -2,11 +2,8 @@ streamlit
 pandas
 openpyxl
 matplotlib
-geopandas
-contextily
 folium
 shapely
+contextily
+geopandas
 xyzservices
-fiona
-pyproj
-rtree
