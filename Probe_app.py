@@ -475,6 +475,89 @@ def create_html_report(all_raw_df, all_mean_df, selected_label, selected_col, fi
     return html
 
 
+def create_all_variables_report(all_raw_df, all_mean_df, fig_map=None):
+    sections = ""
+
+    for var_label, var_col in VALUE_COLS.items():
+        compare_df = all_mean_df[all_mean_df["location_name"] == "Lake mean"]
+        fig_compare = plot_compare(compare_df, var_label, var_col)
+        compare_img = fig_to_base64(fig_compare)
+        plt.close(fig_compare)
+
+        sections += f"""
+        <h2>{var_label}</h2>
+        <h3>Comparison Between Dates / Files</h3>
+        <img src="data:image/png;base64,{compare_img}" style="max-width:850px;width:100%;">
+        """
+
+        for file_name, df_file in all_raw_df.groupby("file_name"):
+            mean_file = all_mean_df[
+                (all_mean_df["file_name"] == file_name) &
+                (all_mean_df["location_name"] != "Lake mean")
+            ]
+
+            lake_mean = all_mean_df[
+                (all_mean_df["file_name"] == file_name) &
+                (all_mean_df["location_name"] == "Lake mean")
+            ]
+
+            fig_loc = plot_by_location(df_file, mean_file, var_label, var_col)
+            loc_img = fig_to_base64(fig_loc)
+            plt.close(fig_loc)
+
+            fig_lake = plot_lake_mean(lake_mean, var_label, var_col, file_name)
+            lake_img = fig_to_base64(fig_lake)
+            plt.close(fig_lake)
+
+            sections += f"""
+            <h3>{file_name}</h3>
+            <h4>Split by Location</h4>
+            <img src="data:image/png;base64,{loc_img}" style="max-width:850px;width:100%;">
+
+            <h4>Lake Mean</h4>
+            <img src="data:image/png;base64,{lake_img}" style="max-width:850px;width:100%;">
+            """
+
+    map_section = ""
+    if fig_map is not None:
+        map_img = fig_to_base64(fig_map)
+        map_section = f"""
+        <h2>Static Sampling Map</h2>
+        <img src="data:image/png;base64,{map_img}" style="max-width:900px;width:100%;">
+        """
+
+    html = f"""
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Full Lake Water-Quality Report</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 40px; }}
+            h1 {{ color: #12395a; }}
+            h2 {{ color: #1f4e79; border-bottom: 2px solid #ddd; padding-bottom: 6px; }}
+            h3 {{ color: #333; margin-top: 25px; }}
+            h4 {{ color: #555; }}
+            table {{ border-collapse: collapse; width: 100%; margin-bottom: 25px; }}
+            th, td {{ border: 1px solid #ccc; padding: 6px; text-align: left; }}
+            th {{ background: #f0f0f0; }}
+            img {{ margin: 15px 0 30px 0; }}
+        </style>
+    </head>
+    <body>
+        <h1>Full Lake Water-Quality Profile Report</h1>
+
+        {map_section}
+
+        {sections}
+
+        <h2>All Mean Values</h2>
+        {all_mean_df.round(3).to_html(index=False)}
+    </body>
+    </html>
+    """
+
+    return html
+    
 uploaded_files = st.sidebar.file_uploader(
     "Drag Excel files here",
     type=["xlsx", "xls"],
@@ -514,6 +597,9 @@ all_mean_df = pd.concat(all_means, ignore_index=True)
 label = selected_variable
 col = VALUE_COLS[label]
 
+# ------------------------------------------------
+# TABLES
+# ------------------------------------------------
 st.header("Tables")
 
 c1, c2, c3 = st.columns(3)
@@ -545,6 +631,9 @@ with c3:
 st.dataframe(all_mean_df.round(3), use_container_width=True)
 
 
+# ------------------------------------------------
+# PROFILES SPLIT BY LOCATION
+# ------------------------------------------------
 st.header("Profiles Split by Location")
 
 for file_name, df_file in all_raw_df.groupby("file_name"):
@@ -587,6 +676,9 @@ for file_name, df_file in all_raw_df.groupby("file_name"):
     )
 
 
+# ------------------------------------------------
+# COMPARISON BETWEEN DATES / FILES
+# ------------------------------------------------
 st.header("Comparison Between Dates / Files")
 
 compare_df = all_mean_df[all_mean_df["location_name"] == "Lake mean"]
@@ -602,6 +694,9 @@ st.download_button(
 )
 
 
+# ------------------------------------------------
+# MAPS
+# ------------------------------------------------
 st.header("Maps")
 
 st.subheader("Interactive Map")
@@ -623,7 +718,12 @@ st.subheader("Static Imagery Map")
 fig_map = None
 
 try:
-    fig_map = create_static_map(all_raw_df, buffer_m=buffer_m, zoom=static_zoom)
+    fig_map = create_static_map(
+        all_raw_df,
+        buffer_m=buffer_m,
+        zoom=static_zoom
+    )
+
     st.pyplot(fig_map)
 
     st.download_button(
@@ -637,8 +737,12 @@ except Exception as e:
     st.warning(f"Static map failed. Interactive map still works. Error: {e}")
 
 
-st.header("Report")
+# ------------------------------------------------
+# REPORTS
+# ------------------------------------------------
+st.header("Reports")
 
+# selected-variable report
 report_html = create_html_report(
     all_raw_df=all_raw_df,
     all_mean_df=all_mean_df,
@@ -648,30 +752,68 @@ report_html = create_html_report(
     fig_map=fig_map
 )
 
+st.subheader("Selected Variable Report")
+
 components.html(report_html, height=800, scrolling=True)
 
 st.download_button(
-    "Download HTML report",
+    "Download selected-variable HTML report",
     report_html.encode("utf-8"),
-    file_name="lake_water_quality_report.html",
+    file_name=f"lake_water_quality_report_{col}.html",
+    mime="text/html"
+)
+
+# full all-variables report
+full_report_html = create_all_variables_report(
+    all_raw_df=all_raw_df,
+    all_mean_df=all_mean_df,
+    fig_map=fig_map
+)
+
+st.subheader("Full Report - All Variables")
+
+st.download_button(
+    "Download FULL report - all variables",
+    full_report_html.encode("utf-8"),
+    file_name="full_lake_water_quality_report_all_variables.html",
     mime="text/html"
 )
 
 
+# ------------------------------------------------
+# DOWNLOAD ALL OUTPUTS AS ZIP
+# ------------------------------------------------
 st.header("Download All Outputs")
 
 zip_buffer = io.BytesIO()
 
 with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as z:
 
+    # tables
     z.writestr("tables/all_raw_data.csv", all_raw_df.to_csv(index=False))
     z.writestr("tables/all_means.csv", all_mean_df.to_csv(index=False))
-    z.writestr("reports/lake_water_quality_report.html", report_html)
+
+    # reports
+    z.writestr(
+        f"reports/lake_water_quality_report_{col}.html",
+        report_html
+    )
+
+    z.writestr(
+        "reports/full_lake_water_quality_report_all_variables.html",
+        full_report_html
+    )
+
+    # maps
     z.writestr("maps/interactive_sampling_map.html", map_html)
 
     if fig_map is not None:
-        z.writestr("maps/static_sampling_map.png", fig_to_bytes(fig_map).getvalue())
+        z.writestr(
+            "maps/static_sampling_map.png",
+            fig_to_bytes(fig_map).getvalue()
+        )
 
+    # plots for every variable and every file
     for file_name, df_file in all_raw_df.groupby("file_name"):
 
         mean_file = all_mean_df[
@@ -685,32 +827,55 @@ with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as z:
         ]
 
         for var_label, var_col in VALUE_COLS.items():
-            fig1 = plot_by_location(df_file, mean_file, var_label, var_col)
+
+            fig1 = plot_by_location(
+                df_file,
+                mean_file,
+                var_label,
+                var_col
+            )
+
             z.writestr(
                 f"plots/{file_name}_{var_col}_by_location.png",
                 fig_to_bytes(fig1).getvalue()
             )
+
             plt.close(fig1)
 
-            fig2 = plot_lake_mean(lake_mean, var_label, var_col, file_name)
+            fig2 = plot_lake_mean(
+                lake_mean,
+                var_label,
+                var_col,
+                file_name
+            )
+
             z.writestr(
                 f"plots/{file_name}_{var_col}_lake_mean.png",
                 fig_to_bytes(fig2).getvalue()
             )
+
             plt.close(fig2)
 
+    # comparison plots for every variable
     for var_label, var_col in VALUE_COLS.items():
-        fig = plot_compare(compare_df, var_label, var_col)
+
+        fig = plot_compare(
+            compare_df,
+            var_label,
+            var_col
+        )
+
         z.writestr(
             f"plots/comparison_lake_mean_{var_col}.png",
             fig_to_bytes(fig).getvalue()
         )
+
         plt.close(fig)
 
 zip_buffer.seek(0)
 
 st.download_button(
-    "Download ZIP with tables, plots, maps, and report",
+    "Download ZIP with tables, plots, maps, and reports",
     zip_buffer,
     file_name="lake_profile_outputs.zip",
     mime="application/zip"
