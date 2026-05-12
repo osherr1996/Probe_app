@@ -347,7 +347,7 @@ def plot_by_location(df_file, mean_file, label, col):
 
     for loc, g in df_file.groupby("location_id"):
 
-        loc_name = f"Location {loc + 1}"
+        loc_name = g["station"].iloc[0]
 
         # raw points
         ax.scatter(
@@ -741,6 +741,66 @@ if errors:
 all_raw_df = pd.concat(all_raw, ignore_index=True)
 all_mean_df = pd.concat(all_means, ignore_index=True)
 
+def assign_global_station_names(all_raw_df, all_mean_df, match_radius_m=40):
+    station_centers = (
+        all_raw_df
+        .groupby(["file_name", "date", "location_id"])
+        .agg(
+            mean_lat=(LAT_COL, "mean"),
+            mean_lon=(LON_COL, "mean")
+        )
+        .reset_index()
+    )
+
+    global_stations = []
+    station_names = {}
+
+    next_id = 1
+
+    for _, row in station_centers.iterrows():
+        assigned = None
+
+        for s in global_stations:
+            dist_m = (
+                ((row["mean_lat"] - s["lat"]) * 111320) ** 2 +
+                ((row["mean_lon"] - s["lon"]) * 111320) ** 2
+            ) ** 0.5
+
+            if dist_m <= match_radius_m:
+                assigned = s["name"]
+                break
+
+        if assigned is None:
+            assigned = f"Station_{next_id}"
+            global_stations.append({
+                "name": assigned,
+                "lat": row["mean_lat"],
+                "lon": row["mean_lon"],
+            })
+            next_id += 1
+
+        station_names[(row["file_name"], row["location_id"])] = assigned
+
+    all_raw_df["station"] = all_raw_df.apply(
+        lambda r: station_names.get((r["file_name"], r["location_id"]), "Unknown"),
+        axis=1
+    )
+    all_raw_df["location_name"] = all_raw_df["station"]
+
+    all_mean_df["station"] = all_mean_df.apply(
+        lambda r: "Lake mean" if r["location_id"] == -1 else station_names.get((r["file_name"], r["location_id"]), "Unknown"),
+        axis=1
+    )
+    all_mean_df["location_name"] = all_mean_df["station"]
+
+    return all_raw_df, all_mean_df
+
+all_raw_df, all_mean_df = assign_global_station_names(
+    all_raw_df,
+    all_mean_df,
+    match_radius_m=40
+)
+
 label = selected_variable
 col = VALUE_COLS[label]
 
@@ -748,6 +808,35 @@ col = VALUE_COLS[label]
 # TABLES
 # ------------------------------------------------
 st.header("Tables")
+
+st.subheader("Summary by Station")
+
+summary_df = (
+    all_raw_df
+    .groupby(["date", "file_name", "station"])
+    .agg(
+        n_points=(DEP_COL, "count"),
+        max_depth_m=(DEP_COL, "max"),
+        mean_DO_mg_L=("DO mg/L", "mean"),
+        mean_pH=("pH", "mean"),
+        mean_Chl_ug_L=("Chl ug/L", "mean"),
+        mean_PC_ug_L=("PC ug/L", "mean"),
+        mean_PC_Chl_ratio=("PC_Chl_ratio", "mean"),
+        mean_lat=(LAT_COL, "mean"),
+        mean_lon=(LON_COL, "mean"),
+    )
+    .reset_index()
+    .round(3)
+)
+
+st.dataframe(summary_df, use_container_width=True)
+
+st.download_button(
+    "Download summary by station CSV",
+    summary_df.to_csv(index=False).encode("utf-8"),
+    file_name="summary_by_station.csv",
+    mime="text/csv"
+)
 
 c1, c2, c3 = st.columns(3)
 
