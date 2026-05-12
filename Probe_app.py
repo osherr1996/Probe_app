@@ -56,6 +56,43 @@ def df_to_excel_bytes(df):
     buf.seek(0)
     return buf
 
+# ------------------------------------------------
+# BETTER PLOT STYLING
+# ------------------------------------------------
+def style_axis(ax, title, xlabel):
+    ax.invert_yaxis()
+
+    ax.set_xlabel(xlabel, fontsize=13)
+    ax.set_ylabel("Depth (m)", fontsize=13)
+
+    ax.set_title(
+        title,
+        fontsize=16,
+        fontweight="bold",
+        pad=15
+    )
+
+    ax.grid(
+        True,
+        linestyle="--",
+        linewidth=0.7,
+        alpha=0.35
+    )
+
+    ax.tick_params(labelsize=11)
+
+    for spine in ax.spines.values():
+        spine.set_alpha(0.35)
+
+
+def put_legend_under(ax, ncol=3):
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.16),
+        ncol=ncol,
+        frameon=False,
+        fontsize=10
+    )
 
 def process_file(uploaded_file):
     df = pd.read_excel(uploaded_file)
@@ -152,101 +189,186 @@ def process_file(uploaded_file):
     return df, pd.DataFrame(mean_rows)
 
 
+# ------------------------------------------------
+# LOCATION PLOT
+# ------------------------------------------------
 def plot_by_location(df_file, mean_file, label, col):
+
     mean_col = f"mean_{col}"
 
-    fig, ax = plt.subplots(figsize=(7, 6))
+    fig, ax = plt.subplots(figsize=(9, 7))
 
     for loc, g in df_file.groupby("location_id"):
-        ax.scatter(g[col], g[DEP_COL], s=15, alpha=0.35, label=f"Raw Location {loc + 1}")
 
-        mg = mean_file[mean_file["location_id"] == loc].sort_values("depth_meter")
+        loc_name = f"Location {loc + 1}"
 
+        # raw points
+        ax.scatter(
+            g[col],
+            g[DEP_COL],
+            s=24,
+            alpha=0.22,
+            linewidths=0,
+            label=f"{loc_name} raw"
+        )
+
+        mg = mean_file[
+            mean_file["location_id"] == loc
+        ].sort_values("depth_meter")
+
+        # mean profile
         ax.plot(
             mg[mean_col],
             mg["depth_meter"],
             marker="o",
-            linewidth=2,
-            label=f"Mean Location {loc + 1}"
+            markersize=6,
+            linewidth=2.8,
+            label=f"{loc_name} mean"
         )
 
-    ax.invert_yaxis()
-    ax.set_xlabel(label)
-    ax.set_ylabel("Depth (m)")
-    ax.set_title(f"{label} vs Depth - {df_file['file_name'].iloc[0]}")
-    ax.legend()
-    ax.grid(True)
+    style_axis(
+        ax,
+        title=f"{label} vs Depth - {df_file['file_name'].iloc[0]}",
+        xlabel=label
+    )
+
+    put_legend_under(ax, ncol=3)
+
+    fig.subplots_adjust(bottom=0.24)
 
     return fig
 
 
+# ------------------------------------------------
+# LAKE MEAN PLOT
+# ------------------------------------------------
 def plot_lake_mean(lake_mean, label, col, file_name):
+
     mean_col = f"mean_{col}"
 
-    fig, ax = plt.subplots(figsize=(6, 6))
+    fig, ax = plt.subplots(figsize=(8, 7))
 
     lm = lake_mean.sort_values("depth_meter")
 
-    ax.plot(lm[mean_col], lm["depth_meter"], marker="o", linewidth=3, label="Lake mean")
+    ax.plot(
+        lm[mean_col],
+        lm["depth_meter"],
+        marker="o",
+        markersize=7,
+        linewidth=3,
+        label=file_name
+    )
 
-    ax.invert_yaxis()
-    ax.set_xlabel(f"Mean {label}")
-    ax.set_ylabel("Depth (m)")
-    ax.set_title(f"Lake Mean {label} Profile - {file_name}")
-    ax.legend()
-    ax.grid(True)
+    style_axis(
+        ax,
+        title=f"Lake Mean {label} Profile - {file_name}",
+        xlabel=f"Mean {label}"
+    )
+
+    put_legend_under(ax, ncol=1)
+
+    fig.subplots_adjust(bottom=0.20)
 
     return fig
 
 
+# ------------------------------------------------
+# COMPARISON PLOT
+# ------------------------------------------------
 def plot_compare(compare_df, label, col):
+
     mean_col = f"mean_{col}"
 
-    fig, ax = plt.subplots(figsize=(7, 6))
+    fig, ax = plt.subplots(figsize=(9, 7))
 
     for group_label, g in compare_df.groupby(["date", "file_name"]):
+
         date, file_name = group_label
+
         g = g.sort_values("depth_meter")
 
         ax.plot(
             g[mean_col],
             g["depth_meter"],
             marker="o",
-            linewidth=2,
-            label=f"{date} | {file_name}"
+            markersize=6,
+            linewidth=2.7,
+            label=f"{date}"
         )
 
-    ax.invert_yaxis()
-    ax.set_xlabel(f"Mean {label}")
-    ax.set_ylabel("Depth (m)")
-    ax.set_title(f"Comparison of Lake Mean {label} Between Dates")
-    ax.legend()
-    ax.grid(True)
+    style_axis(
+        ax,
+        title=f"Comparison of Lake Mean {label} Between Dates",
+        xlabel=f"Mean {label}"
+    )
+
+    put_legend_under(ax, ncol=3)
+
+    fig.subplots_adjust(bottom=0.23)
 
     return fig
 
 
-def create_static_map(all_raw_df, buffer_m=300, zoom=16):
-    geometry = [Point(xy) for xy in zip(all_raw_df[LON_COL], all_raw_df[LAT_COL])]
 
-    gdf = gpd.GeoDataFrame(all_raw_df, geometry=geometry, crs="EPSG:4326")
+# ------------------------------------------------
+# STATIC MAP
+# ------------------------------------------------
+def create_static_map(all_raw_df, buffer_m=300, zoom=16):
+
+    geometry = [
+        Point(xy)
+        for xy in zip(all_raw_df[LON_COL], all_raw_df[LAT_COL])
+    ]
+
+    gdf = gpd.GeoDataFrame(
+        all_raw_df,
+        geometry=geometry,
+        crs="EPSG:4326"
+    )
+
     gdf_web = gdf.to_crs(epsg=3857)
 
-    fig, ax = plt.subplots(figsize=(9, 9))
+    fig, ax = plt.subplots(figsize=(10, 10))
 
     for file_name, g in gdf_web.groupby("file_name"):
-        ax.scatter(g.geometry.x, g.geometry.y, s=35, label=file_name)
+
+        ax.scatter(
+            g.geometry.x,
+            g.geometry.y,
+            s=45,
+            alpha=0.85,
+            label=file_name
+        )
 
     xmin, ymin, xmax, ymax = gdf_web.total_bounds
 
     ax.set_xlim(xmin - buffer_m, xmax + buffer_m)
     ax.set_ylim(ymin - buffer_m, ymax + buffer_m)
 
-    ctx.add_basemap(ax, source=ctx.providers.Esri.WorldImagery, zoom=zoom)
+    ctx.add_basemap(
+        ax,
+        source=ctx.providers.Esri.WorldImagery,
+        zoom=zoom
+    )
 
-    ax.set_title("Sampling Points on Real Imagery")
+    ax.set_title(
+        "Sampling Points on Real Imagery",
+        fontsize=16,
+        fontweight="bold",
+        pad=15
+    )
+
     ax.set_axis_off()
-    ax.legend()
+
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.04),
+        ncol=3,
+        frameon=False,
+        fontsize=10
+    )
+
+    fig.subplots_adjust(bottom=0.10)
 
     return fig
 
