@@ -298,7 +298,7 @@ def plot_compare(compare_df, label, col):
 
     style_axis(
         ax,
-        title=f"Comparison of Lake Mean {label} Between Dates",
+        title=f"Comparison of Lake Mean {label}",
         xlabel=f"Mean {label}"
     )
 
