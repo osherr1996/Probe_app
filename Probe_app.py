@@ -112,12 +112,20 @@ def process_file(uploaded_file):
     df["PC_Chl_ratio"] = df["PC ug/L"] / df["Chl ug/L"]
     df.loc[df["Chl ug/L"] == 0, "PC_Chl_ratio"] = pd.NA
 
-    df = df.dropna(subset=[DATE_COL, TIME_COL, DEP_COL, LAT_COL, LON_COL]).reset_index(drop=True)
+    df = df.dropna(
+        subset=[DATE_COL, TIME_COL, DEP_COL, LAT_COL, LON_COL]
+    ).reset_index(drop=True)
+
+    if df.empty:
+        raise ValueError(f"No valid rows found in {uploaded_file.name}")
 
     file_name = Path(uploaded_file.name).stem
     df["file_name"] = file_name
     df["date"] = df[DATE_COL].dt.date.astype(str)
 
+    # ------------------------------------------------
+    # 1. DEPTH-BASED LOCATION SEPARATION
+    # ------------------------------------------------
     location_id = 0
     max_depth_since_zero = 0
     location_ids = []
@@ -131,49 +139,183 @@ def process_file(uploaded_file):
         max_depth_since_zero = max(max_depth_since_zero, dep)
 
     df["location_id"] = location_ids
-    df["location_name"] = "Location " + (df["location_id"] + 1).astype(str)
 
-    mean_rows = []
+    # ------------------------------------------------
+    # 2. KEEP VALID DEPTH PROFILES
+    # ------------------------------------------------
+    good_locations = []
+
+    min_profile_depth_m = 3
+    min_points_per_profile = 10
 
     for loc, g in df.groupby("location_id"):
-        max_depth = int(g[DEP_COL].max())
+
+        if g.empty or g[DEP_COL].dropna().empty:
+            continue
+
+        max_depth_group = g[DEP_COL].dropna().max()
+
+        if (
+            max_depth_group >= min_profile_depth_m
+            and len(g) >= min_points_per_profile
+        ):
+            good_locations.append(loc)
+
+    df = df[df["location_id"].isin(good_locations)].copy()
+
+    if df.empty:
+        raise ValueError(
+            f"All locations in {uploaded_file.name} were removed as invalid profiles. "
+            f"Try lowering min_profile_depth_m or min_points_per_profile."
+        )
+
+    # ------------------------------------------------
+    # 2b. REMOVE MOVING GPS POINTS INSIDE EACH VALID PROFILE
+    # ------------------------------------------------
+    clean_parts = []
+
+    point_radius_m = 30  # increase to 40 or 50 if valid station points are removed
+
+    for loc, g in df.groupby("location_id"):
+
+        if g.empty:
+            continue
+
+        center_lat = g[LAT_COL].median()
+        center_lon = g[LON_COL].median()
+
+        lat_m = (g[LAT_COL] - center_lat) * 111320
+        lon_m = (g[LON_COL] - center_lon) * 111320
+
+        dist_m = (lat_m**2 + lon_m**2) ** 0.5
+
+        g = g.copy()
+        g["dist_from_station_center_m"] = dist_m
+
+        g_clean = g[g["dist_from_station_center_m"] <= point_radius_m].copy()
+
+        if not g_clean.empty:
+            clean_parts.append(g_clean)
+
+    if len(clean_parts) == 0:
+        raise ValueError(
+            f"All points in {uploaded_file.name} were removed by point-level GPS filtering. "
+            f"Try increasing point_radius_m."
+        )
+
+    df = pd.concat(clean_parts, ignore_index=True)
+
+    # ------------------------------------------------
+    # 2c. RE-CHECK EACH PROFILE AFTER POINT CLEANING
+    # ------------------------------------------------
+    good_locations_after_cleaning = []
+
+    for loc, g in df.groupby("location_id"):
+
+        if g.empty or g[DEP_COL].dropna().empty:
+            continue
+
+        if (
+            g[DEP_COL].dropna().max() >= min_profile_depth_m
+            and len(g) >= min_points_per_profile
+        ):
+            good_locations_after_cleaning.append(loc)
+
+    df = df[df["location_id"].isin(good_locations_after_cleaning)].copy()
+
+    if df.empty:
+        raise ValueError(
+            f"All locations in {uploaded_file.name} were removed after GPS point filtering. "
+            f"Try increasing point_radius_m or lowering min_points_per_profile."
+        )
+
+    # ------------------------------------------------
+    # 2d. RE-NUMBER LOCATIONS AFTER CLEANING
+    # ------------------------------------------------
+    old_to_new = {
+        old: i
+        for i, old in enumerate(sorted(df["location_id"].dropna().unique()))
+    }
+
+    df["location_id"] = df["location_id"].map(old_to_new)
+
+    df = df.dropna(subset=["location_id"]).copy()
+    df["location_id"] = df["location_id"].astype(int)
+
+    df["station"] = "Station_" + (df["location_id"] + 1).astype(str)
+    df["location_name"] = df["station"]
+
+    # ------------------------------------------------
+    # 3. MEAN PER DEPTH PER STATION
+    # ------------------------------------------------
+    mean_rows = []
+
+    for station, g in df.groupby("station"):
+
+        if g.empty or g[DEP_COL].dropna().empty:
+            continue
+
+        loc_id = int(g["location_id"].iloc[0])
+        max_depth = int(g[DEP_COL].dropna().max())
 
         for meter in range(0, max_depth + 1):
+
             if meter == 0:
-                window = g[(g[DEP_COL] >= 0) & (g[DEP_COL] <= 0.25)]
+                window = g[
+                    (g[DEP_COL] >= 0) &
+                    (g[DEP_COL] <= 0.25)
+                ]
             else:
-                window = g[(g[DEP_COL] >= meter - 0.25) & (g[DEP_COL] <= meter + 0.25)]
+                window = g[
+                    (g[DEP_COL] >= meter - 0.25) &
+                    (g[DEP_COL] <= meter + 0.25)
+                ]
 
             if len(window) > 0:
                 row = {
                     "file_name": file_name,
                     "date": g["date"].iloc[0],
-                    "location_id": loc,
-                    "location_name": f"Location {loc + 1}",
+                    "location_id": loc_id,
+                    "station": station,
+                    "location_name": station,
                     "depth_meter": meter,
                     "n_points": len(window),
                     "mean_lat": window[LAT_COL].mean(),
                     "mean_lon": window[LON_COL].mean(),
                 }
 
-                for _, col in VALUE_COLS.items():
-                    row[f"mean_{col}"] = window[col].mean()
+                for _, value_col in VALUE_COLS.items():
+                    row[f"mean_{value_col}"] = window[value_col].mean()
 
                 mean_rows.append(row)
 
-    max_depth = int(df[DEP_COL].max())
+    # ------------------------------------------------
+    # 4. LAKE MEAN
+    # ------------------------------------------------
+    if df.empty or df[DEP_COL].dropna().empty:
+        raise ValueError(f"No valid depth data left after filtering in {uploaded_file.name}")
+
+    max_depth = int(df[DEP_COL].dropna().max())
 
     for meter in range(0, max_depth + 1):
+
         if meter == 0:
-            window = df[(df[DEP_COL] >= 0) & (df[DEP_COL] <= 0.25)]
+            window = df[
+                (df[DEP_COL] >= 0) &
+                (df[DEP_COL] <= 0.25)
+            ]
         else:
-            window = df[(df[DEP_COL] >= meter - 0.25) & (df[DEP_COL] <= meter + 0.25)]
+            window = df[
+                (df[DEP_COL] >= meter - 0.25) &
+                (df[DEP_COL] <= meter + 0.25)
+            ]
 
         if len(window) > 0:
             row = {
                 "file_name": file_name,
                 "date": df["date"].iloc[0],
                 "location_id": -1,
+                "station": "Lake mean",
                 "location_name": "Lake mean",
                 "depth_meter": meter,
                 "n_points": len(window),
@@ -181,12 +323,17 @@ def process_file(uploaded_file):
                 "mean_lon": window[LON_COL].mean(),
             }
 
-            for _, col in VALUE_COLS.items():
-                row[f"mean_{col}"] = window[col].mean()
+            for _, value_col in VALUE_COLS.items():
+                row[f"mean_{value_col}"] = window[value_col].mean()
 
             mean_rows.append(row)
 
-    return df, pd.DataFrame(mean_rows)
+    mean_df = pd.DataFrame(mean_rows)
+
+    if mean_df.empty:
+        raise ValueError(f"No mean values could be calculated for {uploaded_file.name}")
+
+    return df, mean_df
 
 
 # ------------------------------------------------
