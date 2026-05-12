@@ -477,14 +477,31 @@ def create_static_map(all_raw_df, buffer_m=300, zoom=16):
 
     fig, ax = plt.subplots(figsize=(10, 10))
 
-    for file_name, g in gdf_web.groupby("file_name"):
+    for station, g in gdf_web.groupby("station"):
 
         ax.scatter(
             g.geometry.x,
             g.geometry.y,
             s=45,
             alpha=0.85,
-            label=file_name
+            label=station
+        )
+
+        # station label
+        ax.text(
+            g.geometry.x.mean(),
+            g.geometry.y.mean(),
+            station,
+            fontsize=11,
+            fontweight="bold",
+            ha="center",
+            va="center",
+            bbox=dict(
+                boxstyle="round,pad=0.3",
+                facecolor="white",
+                edgecolor="black",
+                alpha=0.85
+            )
         )
 
     xmin, ymin, xmax, ymax = gdf_web.total_bounds
@@ -499,7 +516,7 @@ def create_static_map(all_raw_df, buffer_m=300, zoom=16):
     )
 
     ax.set_title(
-        "Sampling Points on Real Imagery",
+        "Sampling Stations on Real Imagery",
         fontsize=16,
         fontweight="bold",
         pad=15
@@ -530,10 +547,50 @@ def create_interactive_map(all_raw_df, zoom_start=15):
         tiles="Esri.WorldImagery"
     )
 
-    colors = ["blue", "red", "green", "purple", "orange", "darkred", "cadetblue", "black", "pink"]
+    colors = [
+        "blue", "red", "green", "purple", "orange",
+        "darkred", "cadetblue", "black", "pink"
+    ]
 
-    for i, (file_name, g) in enumerate(all_raw_df.groupby("file_name")):
-        color = colors[i % len(colors)]
+    station_list = sorted(all_raw_df["station"].dropna().unique())
+    station_colors = {
+        station: colors[i % len(colors)]
+        for i, station in enumerate(station_list)
+    }
+
+    # ------------------------------------------------
+    # Add station name labels
+    # ------------------------------------------------
+    for station, sg in all_raw_df.groupby("station"):
+
+        if station == "Lake mean":
+            continue
+
+        folium.Marker(
+            location=[sg[LAT_COL].mean(), sg[LON_COL].mean()],
+            icon=folium.DivIcon(
+                html=f"""
+                <div style="
+                    font-size:14px;
+                    font-weight:bold;
+                    color:white;
+                    background:#1f4e79;
+                    border-radius:6px;
+                    padding:4px 8px;
+                    border:2px solid white;
+                    white-space:nowrap;">
+                    {station}
+                </div>
+                """
+            )
+        ).add_to(m)
+
+    # ------------------------------------------------
+    # Add sampling points
+    # ------------------------------------------------
+    for station, g in all_raw_df.groupby("station"):
+
+        color = station_colors.get(station, "blue")
 
         for _, row in g.iterrows():
             folium.CircleMarker(
@@ -543,8 +600,9 @@ def create_interactive_map(all_raw_df, zoom_start=15):
                 fill=True,
                 fill_opacity=0.7,
                 popup=(
-                    f"File: {file_name}<br>"
+                    f"File: {row['file_name']}<br>"
                     f"Date: {row['date']}<br>"
+                    f"Station: {row['station']}<br>"
                     f"Location: {row['location_name']}<br>"
                     f"Depth: {row[DEP_COL]:.2f} m<br>"
                     f"DO: {row['DO mg/L']:.2f} mg/L<br>"
