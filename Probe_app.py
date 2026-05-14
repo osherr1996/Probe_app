@@ -447,24 +447,40 @@ st.download_button(
 )
 
 for var_label, var_col in VALUE_COLS.items():
-    summary_var = (
-        raw_df.groupby(["date", "file_name", "station"])
-        .agg(
-            n_points=(DEP_COL, "count"),
-            max_depth_m=(DEP_COL, "max"),
-            mean_value=(var_col, "mean"),
-            mean_lat=(LAT_COL, "mean"),
-            mean_lon=(LON_COL, "mean"),
+
+    lake = mean_df[mean_df["station"] == "Lake mean"]
+    mean_col = f"mean_{var_col}"
+
+    fig_one, ax = plt.subplots(figsize=(7, 6))
+
+    for key, g in lake.groupby(["date", "file_name"]):
+        date, file_name = key
+        g = g.sort_values("depth_meter")
+
+        ax.plot(
+            g[mean_col],
+            g["depth_meter"],
+            marker="o",
+            linewidth=2,
+            label=str(date)
         )
-        .reset_index()
-        .round(3)
+
+    style_profile(ax, var_label, f"Mean {var_label}")
+
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.16),
+        ncol=3,
+        frameon=False
     )
 
+    fig_one.subplots_adjust(bottom=0.22)
+
     st.download_button(
-        f"Download summary - {var_label}",
-        summary_var.to_csv(index=False).encode("utf-8"),
-        file_name=f"summary_{clean_filename(var_label)}.csv",
-        mime="text/csv"
+        f"Download mean comparison plot - {var_label}",
+        fig_to_bytes(fig_one),
+        file_name=f"mean_comparison_{clean_filename(var_label)}.png",
+        mime="image/png"
     )
 
 with st.expander("Preview summary"):
