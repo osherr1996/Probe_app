@@ -18,8 +18,8 @@ LAT_COL = "Lat"
 LON_COL = "Lon"
 
 VALUE_COLS = {
-    "DO mg/L": "DO mg/L",
     "DO %": "DO %",
+    "DO mg/L": "DO mg/L",
     "pH": "pH",
     "Chl ug/L": "Chl ug/L",
     "PC ug/L": "PC ug/L",
@@ -231,50 +231,36 @@ def assign_global_station_names(raw_df, mean_df, radius_m=40):
 
     return raw_df, mean_df
 
+
 def style_profile(ax, title, xlabel):
-    ax.invert_yaxis()
+    ax.invert_yaxis()  # 0 depth at top
     ax.set_title(title, fontsize=13, fontweight="bold")
     ax.set_xlabel(xlabel)
     ax.set_ylabel("Depth (m)")
-    ax.set_yticks(range(0, int(ax.get_ylim()[0]) + 1))
-    ax.grid(True, linestyle="--", alpha=0.35)
 
-def plot_single_variable_for_file(raw_file, mean_file, file_name, label, col):
-    mean_col = f"mean_{col}"
-
-    fig, ax = plt.subplots(figsize=(7, 6))
-
-    for station, g in raw_file.groupby("station"):
-        ax.scatter(
-            g[col],
-            g[DEP_COL],
-            s=14,
-            alpha=0.20
-        )
-
-        mg = mean_file[mean_file["station"] == station].sort_values("depth_meter")
-
-        ax.plot(
-            mg[mean_col],
-            mg["depth_meter"],
-            marker="o",
-            linewidth=2,
-            label=station
-        )
-
-    style_profile(ax, f"{label} - {file_name}", label)
-
-    max_depth = int(raw_file[DEP_COL].max())
+    ymin, ymax = ax.get_ylim()
+    max_depth = int(max(ymin, ymax))
     ax.set_yticks(range(0, max_depth + 1))
 
-    ax.legend(
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.16),
-        ncol=3,
-        frameon=False
-    )
+    ax.grid(True, linestyle="--", alpha=0.35)
+    
+def plot_all_variables_for_file(raw_file, mean_file, file_name):
+    fig, axes = plt.subplots(1, len(VALUE_COLS), figsize=(26, 5), sharey=False)
 
-    fig.subplots_adjust(bottom=0.22)
+    for ax, (label, col) in zip(axes, VALUE_COLS.items()):
+        mean_col = f"mean_{col}"
+
+        for station, g in raw_file.groupby("station"):
+            ax.scatter(g[col], g[DEP_COL], s=14, alpha=0.20)
+
+            mg = mean_file[mean_file["station"] == station].sort_values("depth_meter")
+            ax.plot(mg[mean_col], mg["depth_meter"], marker="o", linewidth=2, label=station)
+
+        style_profile(ax, label, label)
+
+    axes[0].legend(loc="upper center", bbox_to_anchor=(3.2, -0.18), ncol=5, frameon=False)
+    fig.suptitle(file_name, fontsize=16, fontweight="bold")
+    fig.subplots_adjust(bottom=0.25, top=0.85)
 
     return fig
 
@@ -282,7 +268,7 @@ def plot_single_variable_for_file(raw_file, mean_file, file_name, label, col):
 def plot_comparison(mean_df):
     lake = mean_df[mean_df["station"] == "Lake mean"]
 
-    fig, axes = plt.subplots(1, len(VALUE_COLS), figsize=(22, 5), sharey=True)
+    fig, axes = plt.subplots(1, len(VALUE_COLS), figsize=(26, 5), sharey=False)
 
     for ax, (label, col) in zip(axes, VALUE_COLS.items()):
         mean_col = f"mean_{col}"
@@ -294,7 +280,7 @@ def plot_comparison(mean_df):
 
         style_profile(ax, label, f"Mean {label}")
 
-    axes[0].legend(loc="upper center", bbox_to_anchor=(2.8, -0.18), ncol=5, frameon=False)
+    axes[0].legend(loc="upper center", bbox_to_anchor=(3.2, -0.18), ncol=5, frameon=False)
     fig.suptitle("Lake Mean Comparison Between Data", fontsize=16, fontweight="bold")
     fig.subplots_adjust(bottom=0.25, top=0.85)
 
@@ -374,6 +360,7 @@ def make_summary(raw_df):
         .round(3)
     )
 
+
 uploaded_files = st.sidebar.file_uploader(
     "Upload Excel files",
     type=["xlsx", "xls"],
@@ -418,25 +405,15 @@ mean_file = mean_df[
 
 st.header(f"Data: {selected_file}")
 
-st.subheader("Station profiles by variable")
+fig_data = plot_all_variables_for_file(df_file, mean_file, selected_file)
+st.pyplot(fig_data)
 
-for label, col in VALUE_COLS.items():
-    fig_var = plot_single_variable_for_file(
-        df_file,
-        mean_file,
-        selected_file,
-        label,
-        col
-    )
-
-    st.pyplot(fig_var)
-
-    st.download_button(
-        f"Download {label} plot",
-        fig_to_bytes(fig_var),
-        file_name=f"{clean_filename(selected_file)}_{clean_filename(label)}_by_station.png",
-        mime="image/png"
-    )
+st.download_button(
+    "Download all-variable station plot",
+    fig_to_bytes(fig_data),
+    file_name=f"{clean_filename(selected_file)}_all_variables_by_station.png",
+    mime="image/png"
+)
 
 st.subheader("Map by Station")
 m = create_map(df_file, zoom=map_zoom)
@@ -468,6 +445,27 @@ st.download_button(
     file_name="summary_by_station_between_data.csv",
     mime="text/csv"
 )
+
+for var_label, var_col in VALUE_COLS.items():
+    summary_var = (
+        raw_df.groupby(["date", "file_name", "station"])
+        .agg(
+            n_points=(DEP_COL, "count"),
+            max_depth_m=(DEP_COL, "max"),
+            mean_value=(var_col, "mean"),
+            mean_lat=(LAT_COL, "mean"),
+            mean_lon=(LON_COL, "mean"),
+        )
+        .reset_index()
+        .round(3)
+    )
+
+    st.download_button(
+        f"Download summary - {var_label}",
+        summary_var.to_csv(index=False).encode("utf-8"),
+        file_name=f"summary_{clean_filename(var_label)}.csv",
+        mime="text/csv"
+    )
 
 with st.expander("Preview summary"):
     st.dataframe(summary_df, use_container_width=True)
