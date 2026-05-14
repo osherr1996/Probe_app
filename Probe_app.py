@@ -19,6 +19,7 @@ LON_COL = "Lon"
 
 VALUE_COLS = {
     "DO mg/L": "DO mg/L",
+    "DO %": "DO %",
     "pH": "pH",
     "Chl ug/L": "Chl ug/L",
     "PC ug/L": "PC ug/L",
@@ -27,7 +28,7 @@ VALUE_COLS = {
 
 BASE_COLS = [
     DATE_COL, TIME_COL, DEP_COL, LAT_COL, LON_COL,
-    "DO mg/L", "pH", "Chl ug/L", "PC ug/L"
+    "DO %", "DO mg/L", "pH", "Chl ug/L", "PC ug/L"
 ]
 
 
@@ -54,7 +55,7 @@ def process_file(uploaded_file):
     df[DATE_COL] = pd.to_datetime(df[DATE_COL], dayfirst=True, errors="coerce")
     df[TIME_COL] = pd.to_datetime(df[TIME_COL].astype(str), format="%H:%M:%S", errors="coerce")
 
-    for col in [DEP_COL, LAT_COL, LON_COL, "DO mg/L", "pH", "Chl ug/L", "PC ug/L"]:
+    for col in [DEP_COL, LAT_COL, LON_COL, "DO %", "DO mg/L", "pH", "Chl ug/L", "PC ug/L"]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
     df["PC_Chl_ratio"] = df["PC ug/L"] / df["Chl ug/L"]
@@ -342,6 +343,7 @@ def make_summary(raw_df):
         .agg(
             n_points=(DEP_COL, "count"),
             max_depth_m=(DEP_COL, "max"),
+            mean_DO_percent=("DO %", "mean"),
             mean_DO_mg_L=("DO mg/L", "mean"),
             mean_pH=("pH", "mean"),
             mean_Chl_ug_L=("Chl ug/L", "mean"),
@@ -353,7 +355,6 @@ def make_summary(raw_df):
         .reset_index()
         .round(3)
     )
-
 
 uploaded_files = st.sidebar.file_uploader(
     "Upload Excel files",
