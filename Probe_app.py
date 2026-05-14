@@ -231,32 +231,50 @@ def assign_global_station_names(raw_df, mean_df, radius_m=40):
 
     return raw_df, mean_df
 
-
 def style_profile(ax, title, xlabel):
     ax.invert_yaxis()
     ax.set_title(title, fontsize=13, fontweight="bold")
     ax.set_xlabel(xlabel)
     ax.set_ylabel("Depth (m)")
+    ax.set_yticks(range(0, int(ax.get_ylim()[0]) + 1))
     ax.grid(True, linestyle="--", alpha=0.35)
 
+def plot_single_variable_for_file(raw_file, mean_file, file_name, label, col):
+    mean_col = f"mean_{col}"
 
-def plot_all_variables_for_file(raw_file, mean_file, file_name):
-    fig, axes = plt.subplots(1, len(VALUE_COLS), figsize=(22, 5), sharey=True)
+    fig, ax = plt.subplots(figsize=(7, 6))
 
-    for ax, (label, col) in zip(axes, VALUE_COLS.items()):
-        mean_col = f"mean_{col}"
+    for station, g in raw_file.groupby("station"):
+        ax.scatter(
+            g[col],
+            g[DEP_COL],
+            s=14,
+            alpha=0.20
+        )
 
-        for station, g in raw_file.groupby("station"):
-            ax.scatter(g[col], g[DEP_COL], s=14, alpha=0.20)
+        mg = mean_file[mean_file["station"] == station].sort_values("depth_meter")
 
-            mg = mean_file[mean_file["station"] == station].sort_values("depth_meter")
-            ax.plot(mg[mean_col], mg["depth_meter"], marker="o", linewidth=2, label=station)
+        ax.plot(
+            mg[mean_col],
+            mg["depth_meter"],
+            marker="o",
+            linewidth=2,
+            label=station
+        )
 
-        style_profile(ax, label, label)
+    style_profile(ax, f"{label} - {file_name}", label)
 
-    axes[0].legend(loc="upper center", bbox_to_anchor=(2.8, -0.18), ncol=5, frameon=False)
-    fig.suptitle(file_name, fontsize=16, fontweight="bold")
-    fig.subplots_adjust(bottom=0.25, top=0.85)
+    max_depth = int(raw_file[DEP_COL].max())
+    ax.set_yticks(range(0, max_depth + 1))
+
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.16),
+        ncol=3,
+        frameon=False
+    )
+
+    fig.subplots_adjust(bottom=0.22)
 
     return fig
 
@@ -400,15 +418,25 @@ mean_file = mean_df[
 
 st.header(f"Data: {selected_file}")
 
-fig_data = plot_all_variables_for_file(df_file, mean_file, selected_file)
-st.pyplot(fig_data)
+st.subheader("Station profiles by variable")
 
-st.download_button(
-    "Download all-variable station plot",
-    fig_to_bytes(fig_data),
-    file_name=f"{clean_filename(selected_file)}_all_variables_by_station.png",
-    mime="image/png"
-)
+for label, col in VALUE_COLS.items():
+    fig_var = plot_single_variable_for_file(
+        df_file,
+        mean_file,
+        selected_file,
+        label,
+        col
+    )
+
+    st.pyplot(fig_var)
+
+    st.download_button(
+        f"Download {label} plot",
+        fig_to_bytes(fig_var),
+        file_name=f"{clean_filename(selected_file)}_{clean_filename(label)}_by_station.png",
+        mime="image/png"
+    )
 
 st.subheader("Map by Station")
 m = create_map(df_file, zoom=map_zoom)
