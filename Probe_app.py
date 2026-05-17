@@ -277,8 +277,8 @@ def plot_all_variables_for_file(raw_file, mean_file, file_name):
 
     axes[0].legend(loc="upper center", bbox_to_anchor=(3.2, -0.18), ncol=5, frameon=False)
     time_label = raw_file["datetime_label"].iloc[0]
-    fig.suptitle(f"{file_name}\n{time_label}", fontsize=16, fontweight="bold")
-    fig.subplots_adjust(bottom=0.25, top=0.85)
+    fig.suptitle( f"{file_name}\n{time_label}", fontsize=16,  fontweight="bold", y=0.98)
+    fig.subplots_adjust( bottom=0.25, top=0.72, wspace=0.35)
 
     return fig
 
