@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 import folium
 import streamlit as st
 import streamlit.components.v1 as components
-
+plt.rcParams["figure.dpi"] = 140
+plt.rcParams["savefig.dpi"] = 400
 
 st.set_page_config(page_title="Lake Profile Analyzer", layout="wide")
 st.title("Lake Water-Quality Profile Analyzer")
@@ -32,10 +33,15 @@ BASE_COLS = [
     "DO %", "DO mg/L", "pH", "ORP mV", "Chl ug/L", "PC ug/L"
 ]
 
-
 def fig_to_bytes(fig):
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=200, bbox_inches="tight")
+    fig.savefig(
+        buf,
+        format="png",
+        dpi=400,
+        bbox_inches="tight",
+        facecolor="white"
+    )
     buf.seek(0)
     return buf
 
