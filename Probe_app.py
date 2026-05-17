@@ -21,6 +21,7 @@ LON_COL = "Lon"
 VALUE_COLS = {
     "DO %": "DO %",
     "DO mg/L": "DO mg/L",
+    "SPC-uS/cm": "SPC-uS/cm",
     "pH": "pH",
     "ORP mV": "ORP mV",
     "Chl ug/L": "Chl ug/L",
@@ -30,7 +31,13 @@ VALUE_COLS = {
 
 BASE_COLS = [
     DATE_COL, TIME_COL, DEP_COL, LAT_COL, LON_COL,
-    "DO %", "DO mg/L", "pH", "ORP mV", "Chl ug/L", "PC ug/L"
+    "DO %",
+    "DO mg/L",
+    "SPC-uS/cm",
+    "pH",
+    "ORP mV",
+    "Chl ug/L",
+    "PC ug/L"
 ]
 
 def fig_to_bytes(fig):
@@ -62,7 +69,17 @@ def process_file(uploaded_file):
     df[DATE_COL] = pd.to_datetime(df[DATE_COL], dayfirst=True, errors="coerce")
     df[TIME_COL] = pd.to_datetime(df[TIME_COL].astype(str), format="%H:%M:%S", errors="coerce")
 
-    for col in [DEP_COL, LAT_COL, LON_COL, "DO %", "DO mg/L", "pH", "ORP mV", "Chl ug/L", "PC ug/L"]:
+    for col in [
+        DEP_COL,
+        LAT_COL,
+        LON_COL,
+        "DO %",
+        "DO mg/L",
+        "SPC-uS/cm",
+        "pH",
+        "ORP mV",
+        "Chl ug/L",
+        "PC ug/L" ]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
     df["PC_Chl_ratio"] = df["PC ug/L"] / df["Chl ug/L"]
@@ -388,16 +405,17 @@ def create_map(df_file, zoom=15):
                 fill_opacity=0.7,
                 popup=(
                     f"File: {r['file_name']}<br>"
-                    f"Date: {r['date']}<br>"
+                    f"Time: {r['datetime_label']}<br>"
                     f"Station: {r['station']}<br>"
                     f"Depth: {r[DEP_COL]:.2f} m<br>"
-                    f"DO: {r['DO mg/L']:.2f}<br>"
+                    f"DO %: {r['DO %']:.2f}<br>"
+                    f"DO mg/L: {r['DO mg/L']:.2f}<br>"
+                    f"SPC: {r['SPC-uS/cm']:.2f} uS/cm<br>"
                     f"pH: {r['pH']:.2f}<br>"
+                    f"ORP: {r['ORP mV']:.2f} mV<br>"
                     f"Chl: {r['Chl ug/L']:.2f}<br>"
                     f"PC: {r['PC ug/L']:.2f}<br>"
-                    f"PC/Chl: {r['PC_Chl_ratio']:.3f}"
-                    f"Time: {r['datetime_label']}<br>"
-                    f"ORP: {r['ORP mV']:.2f} mV<br>"
+                    f"PC/Chl: {r['PC_Chl_ratio']:.3f}<br>"
                 )
             ).add_to(m)
 
@@ -413,6 +431,7 @@ def make_summary(raw_df):
             max_depth_m=(DEP_COL, "max"),
             mean_DO_percent=("DO %", "mean"),
             mean_DO_mg_L=("DO mg/L", "mean"),
+            mean_SPC_uS_cm=("SPC-uS/cm", "mean"),
             mean_pH=("pH", "mean"),
             mean_ORP_mV=("ORP mV", "mean"),
             mean_Chl_ug_L=("Chl ug/L", "mean"),
