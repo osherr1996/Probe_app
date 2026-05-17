@@ -72,14 +72,19 @@ def process_file(uploaded_file):
     df["date"] = df[DATE_COL].dt.date.astype(str)
 
     df["time_str"] = df[TIME_COL].dt.strftime("%H:%M:%S")
-    df["datetime_label"] = df[DATE_COL].dt.strftime("%d/%m/%Y") + " " + df["time_str"]
     
-    hour = df[TIME_COL].dt.hour
-    df["time_period"] = pd.cut(
-        hour,
-        bins=[-1, 10, 16, 23],
-        labels=["morning", "noon", "evening"]
-    ).astype(str)
+    df["start_time"] = df[TIME_COL].min().strftime("%H:%M")
+    df["end_time"] = df[TIME_COL].max().strftime("%H:%M")
+    
+    df["time_range"] = (
+        df["start_time"] + " - " + df["end_time"]
+    )
+    
+    df["datetime_label"] = (
+        df[DATE_COL].dt.strftime("%d/%m/%Y") +
+        "  " +
+        df["time_range"]
+    )
 
     # depth-based profile separation
     location_id = 0
@@ -164,9 +169,8 @@ def calculate_means(df):
                     "n_points": len(w),
                     "mean_lat": w[LAT_COL].mean(),
                     "mean_lon": w[LON_COL].mean(),
-                    "time": w["time_str"].iloc[0],
+                    "time_range": w["time_range"].iloc[0],
                     "datetime_label": w["datetime_label"].iloc[0],
-                    "time_period": w["time_period"].mode().iloc[0],
                 }
 
                 for _, col in VALUE_COLS.items():
@@ -195,9 +199,8 @@ def calculate_means(df):
                     "n_points": len(w),
                     "mean_lat": w[LAT_COL].mean(),
                     "mean_lon": w[LON_COL].mean(),
-                    "time": w["time_str"].iloc[0],
+                    "time_range": w["time_range"].iloc[0],
                     "datetime_label": w["datetime_label"].iloc[0],
-                    "time_period": w["time_period"].mode().iloc[0],
                 }
 
                 for _, col in VALUE_COLS.items():
@@ -294,23 +297,26 @@ def plot_comparison(mean_df):
     )
 
     for ax, (label, col) in zip(axes, VALUE_COLS.items()):
+
         mean_col = f"mean_{col}"
 
         for key, g in lake.groupby(["date", "file_name"]):
+
             date, file_name = key
+
             g = g.sort_values("depth_meter")
 
-            if "time_period" in g.columns:
-                period = g["time_period"].iloc[0]
+            if "time_range" in g.columns:
+                time_range = g["time_range"].iloc[0]
             else:
-                period = ""
+                time_range = ""
 
             ax.plot(
                 g[mean_col],
                 g["depth_meter"],
                 marker="o",
                 linewidth=2,
-                label=f"{date} ({period})"
+                label=f"{date} ({time_range})"
             )
 
         style_profile(ax, label, f"Mean {label}")
@@ -318,7 +324,7 @@ def plot_comparison(mean_df):
     axes[0].legend(
         loc="upper center",
         bbox_to_anchor=(3.7, -0.18),
-        ncol=5,
+        ncol=4,
         frameon=False
     )
 
@@ -328,7 +334,10 @@ def plot_comparison(mean_df):
         fontweight="bold"
     )
 
-    fig.subplots_adjust(bottom=0.25, top=0.85)
+    fig.subplots_adjust(
+        bottom=0.25,
+        top=0.85
+    )
 
     return fig
 
@@ -392,9 +401,8 @@ def make_summary(raw_df):
     return (
         raw_df.groupby(["date", "file_name", "station"])
         .agg(
-            time=("time_str", "first"),
+            time_range=("time_range", "first"),
             datetime_label=("datetime_label", "first"),
-            time_period=("time_period", lambda x: x.mode().iloc[0]),
             n_points=(DEP_COL, "count"),
             max_depth_m=(DEP_COL, "max"),
             mean_DO_percent=("DO %", "mean"),
