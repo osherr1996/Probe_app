@@ -195,6 +195,9 @@ def calculate_means(df):
                     "n_points": len(w),
                     "mean_lat": w[LAT_COL].mean(),
                     "mean_lon": w[LON_COL].mean(),
+                    "time": w["time_str"].iloc[0],
+                    "datetime_label": w["datetime_label"].iloc[0],
+                    "time_period": w["time_period"].mode().iloc[0],
                 }
 
                 for _, col in VALUE_COLS.items():
