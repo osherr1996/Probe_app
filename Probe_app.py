@@ -21,6 +21,7 @@ VALUE_COLS = {
     "DO %": "DO %",
     "DO mg/L": "DO mg/L",
     "pH": "pH",
+    "ORP mV": "ORP mV",
     "Chl ug/L": "Chl ug/L",
     "PC ug/L": "PC ug/L",
     "PC / Chl": "PC_Chl_ratio",
@@ -28,7 +29,7 @@ VALUE_COLS = {
 
 BASE_COLS = [
     DATE_COL, TIME_COL, DEP_COL, LAT_COL, LON_COL,
-    "DO %", "DO mg/L", "pH", "Chl ug/L", "PC ug/L"
+    "DO %", "DO mg/L", "pH", "ORP mV", "Chl ug/L", "PC ug/L"
 ]
 
 
@@ -55,7 +56,7 @@ def process_file(uploaded_file):
     df[DATE_COL] = pd.to_datetime(df[DATE_COL], dayfirst=True, errors="coerce")
     df[TIME_COL] = pd.to_datetime(df[TIME_COL].astype(str), format="%H:%M:%S", errors="coerce")
 
-    for col in [DEP_COL, LAT_COL, LON_COL, "DO %", "DO mg/L", "pH", "Chl ug/L", "PC ug/L"]:
+    for col in [DEP_COL, LAT_COL, LON_COL, "DO %", "DO mg/L", "pH", "ORP mV", "Chl ug/L", "PC ug/L"]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
     df["PC_Chl_ratio"] = df["PC ug/L"] / df["Chl ug/L"]
@@ -69,6 +70,16 @@ def process_file(uploaded_file):
     file_name = Path(uploaded_file.name).stem
     df["file_name"] = file_name
     df["date"] = df[DATE_COL].dt.date.astype(str)
+
+    df["time_str"] = df[TIME_COL].dt.strftime("%H:%M:%S")
+    df["datetime_label"] = df[DATE_COL].dt.strftime("%d/%m/%Y") + " " + df["time_str"]
+    
+    hour = df[TIME_COL].dt.hour
+    df["time_period"] = pd.cut(
+        hour,
+        bins=[-1, 10, 16, 23],
+        labels=["morning", "noon", "evening"]
+    ).astype(str)
 
     # depth-based profile separation
     location_id = 0
@@ -153,6 +164,9 @@ def calculate_means(df):
                     "n_points": len(w),
                     "mean_lat": w[LAT_COL].mean(),
                     "mean_lon": w[LON_COL].mean(),
+                    "time": w["time_str"].iloc[0],
+                    "datetime_label": w["datetime_label"].iloc[0],
+                    "time_period": w["time_period"].mode().iloc[0],
                 }
 
                 for _, col in VALUE_COLS.items():
@@ -259,7 +273,8 @@ def plot_all_variables_for_file(raw_file, mean_file, file_name):
         style_profile(ax, label, label)
 
     axes[0].legend(loc="upper center", bbox_to_anchor=(3.2, -0.18), ncol=5, frameon=False)
-    fig.suptitle(file_name, fontsize=16, fontweight="bold")
+    time_label = raw_file["datetime_label"].iloc[0]
+    fig.suptitle(f"{file_name}\n{time_label}", fontsize=16, fontweight="bold")
     fig.subplots_adjust(bottom=0.25, top=0.85)
 
     return fig
@@ -268,7 +283,12 @@ def plot_all_variables_for_file(raw_file, mean_file, file_name):
 def plot_comparison(mean_df):
     lake = mean_df[mean_df["station"] == "Lake mean"]
 
-    fig, axes = plt.subplots(1, len(VALUE_COLS), figsize=(26, 5), sharey=False)
+    fig, axes = plt.subplots(
+        1,
+        len(VALUE_COLS),
+        figsize=(30, 5),
+        sharey=False
+    )
 
     for ax, (label, col) in zip(axes, VALUE_COLS.items()):
         mean_col = f"mean_{col}"
@@ -276,12 +296,35 @@ def plot_comparison(mean_df):
         for key, g in lake.groupby(["date", "file_name"]):
             date, file_name = key
             g = g.sort_values("depth_meter")
-            ax.plot(g[mean_col], g["depth_meter"], marker="o", linewidth=2, label=str(date))
+
+            if "time_period" in g.columns:
+                period = g["time_period"].iloc[0]
+            else:
+                period = ""
+
+            ax.plot(
+                g[mean_col],
+                g["depth_meter"],
+                marker="o",
+                linewidth=2,
+                label=f"{date} ({period})"
+            )
 
         style_profile(ax, label, f"Mean {label}")
 
-    axes[0].legend(loc="upper center", bbox_to_anchor=(3.2, -0.18), ncol=5, frameon=False)
-    fig.suptitle("Lake Mean Comparison Between Data", fontsize=16, fontweight="bold")
+    axes[0].legend(
+        loc="upper center",
+        bbox_to_anchor=(3.7, -0.18),
+        ncol=5,
+        frameon=False
+    )
+
+    fig.suptitle(
+        "Lake Mean Comparison Between Data",
+        fontsize=16,
+        fontweight="bold"
+    )
+
     fig.subplots_adjust(bottom=0.25, top=0.85)
 
     return fig
@@ -335,21 +378,26 @@ def create_map(df_file, zoom=15):
                     f"Chl: {r['Chl ug/L']:.2f}<br>"
                     f"PC: {r['PC ug/L']:.2f}<br>"
                     f"PC/Chl: {r['PC_Chl_ratio']:.3f}"
+                    f"Time: {r['datetime_label']}<br>"
+                    f"ORP: {r['ORP mV']:.2f} mV<br>"
                 )
             ).add_to(m)
 
     return m
 
-
 def make_summary(raw_df):
     return (
         raw_df.groupby(["date", "file_name", "station"])
         .agg(
+            time=("time_str", "first"),
+            datetime_label=("datetime_label", "first"),
+            time_period=("time_period", lambda x: x.mode().iloc[0]),
             n_points=(DEP_COL, "count"),
             max_depth_m=(DEP_COL, "max"),
             mean_DO_percent=("DO %", "mean"),
             mean_DO_mg_L=("DO mg/L", "mean"),
             mean_pH=("pH", "mean"),
+            mean_ORP_mV=("ORP mV", "mean"),
             mean_Chl_ug_L=("Chl ug/L", "mean"),
             mean_PC_ug_L=("PC ug/L", "mean"),
             mean_PC_Chl_ratio=("PC_Chl_ratio", "mean"),
@@ -359,6 +407,7 @@ def make_summary(raw_df):
         .reset_index()
         .round(3)
     )
+
 
 
 uploaded_files = st.sidebar.file_uploader(
