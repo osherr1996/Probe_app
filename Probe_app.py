@@ -417,7 +417,12 @@ uploaded_files = st.sidebar.file_uploader(
 )
 
 map_zoom = st.sidebar.slider("Map zoom", 10, 20, 15)
-match_radius = st.sidebar.slider("Match station between data, meters", 10, 100, 40)
+match_radius = st.sidebar.slider(
+    "Match station between data (meters)",
+    10,
+    100,
+    40
+)
 
 if not uploaded_files:
     st.info("Upload Excel files to start.")
@@ -430,31 +435,83 @@ for f in uploaded_files:
     try:
         raw_parts.append(process_file(f))
     except Exception as e:
-        errors.append(str(e))
+        errors.append(f"{f.name}: {e}")
 
 if errors:
     st.error("\n".join(errors))
     st.stop()
 
+# ------------------------------------------------
+# MERGE ALL FILES
+# ------------------------------------------------
 raw_df = pd.concat(raw_parts, ignore_index=True)
-mean_df = calculate_means(raw_df)
-raw_df, mean_df = assign_global_station_names(raw_df, mean_df, radius_m=match_radius)
+
+# initial means
 mean_df = calculate_means(raw_df)
 
+# assign same station names between dates/files
+raw_df, mean_df = assign_global_station_names(
+    raw_df,
+    mean_df,
+    radius_m=match_radius
+)
+
+# update station names in mean_df
+mean_df["station"] = mean_df.apply(
+    lambda r: (
+        "Lake mean"
+        if r["location_id"] == -1
+        else raw_df[
+            (raw_df["file_name"] == r["file_name"]) &
+            (raw_df["location_id"] == r["location_id"])
+        ]["station"].iloc[0]
+    ),
+    axis=1
+)
+
+mean_df["location_name"] = mean_df["station"]
+
+# ------------------------------------------------
+# SUMMARY
+# ------------------------------------------------
 summary_df = make_summary(raw_df)
 
+# ------------------------------------------------
+# FILE SELECTION
+# ------------------------------------------------
 file_options = sorted(raw_df["file_name"].unique())
-selected_file = st.sidebar.selectbox("Choose data", file_options)
 
-df_file = raw_df[raw_df["file_name"] == selected_file]
+selected_file = st.sidebar.selectbox(
+    "Choose data",
+    file_options
+)
+
+df_file = raw_df[
+    raw_df["file_name"] == selected_file
+]
+
 mean_file = mean_df[
     (mean_df["file_name"] == selected_file) &
     (mean_df["station"] != "Lake mean")
 ]
 
+# ------------------------------------------------
+# MAIN DATA PANEL
+# ------------------------------------------------
 st.header(f"Data: {selected_file}")
 
-fig_data = plot_all_variables_for_file(df_file, mean_file, selected_file)
+time_label = df_file["datetime_label"].iloc[0]
+
+st.markdown(
+    f"### Sampling Time: `{time_label}`"
+)
+
+fig_data = plot_all_variables_for_file(
+    df_file,
+    mean_file,
+    selected_file
+)
+
 st.pyplot(fig_data)
 
 st.download_button(
@@ -464,10 +521,20 @@ st.download_button(
     mime="image/png"
 )
 
+# ------------------------------------------------
+# MAP
+# ------------------------------------------------
 st.subheader("Map by Station")
+
 m = create_map(df_file, zoom=map_zoom)
+
 map_html = m.get_root().render()
-components.html(map_html, height=600, scrolling=True)
+
+components.html(
+    map_html,
+    height=600,
+    scrolling=True
+)
 
 st.download_button(
     "Download interactive map",
@@ -476,9 +543,13 @@ st.download_button(
     mime="text/html"
 )
 
+# ------------------------------------------------
+# COMPARISON PANEL
+# ------------------------------------------------
 st.header("Comparison Panel")
 
 fig_compare = plot_comparison(mean_df)
+
 st.pyplot(fig_compare)
 
 st.download_button(
@@ -488,6 +559,9 @@ st.download_button(
     mime="image/png"
 )
 
+# ------------------------------------------------
+# DOWNLOAD SUMMARY
+# ------------------------------------------------
 st.download_button(
     "Download summary CSV",
     summary_df.to_csv(index=False).encode("utf-8"),
@@ -495,26 +569,45 @@ st.download_button(
     mime="text/csv"
 )
 
+# ------------------------------------------------
+# DOWNLOAD EACH VARIABLE COMPARISON
+# ------------------------------------------------
+st.subheader("Download Mean Comparison per Variable")
+
 for var_label, var_col in VALUE_COLS.items():
 
-    lake = mean_df[mean_df["station"] == "Lake mean"]
+    lake = mean_df[
+        mean_df["station"] == "Lake mean"
+    ]
+
     mean_col = f"mean_{var_col}"
 
     fig_one, ax = plt.subplots(figsize=(7, 6))
 
     for key, g in lake.groupby(["date", "file_name"]):
+
         date, file_name = key
+
         g = g.sort_values("depth_meter")
+
+        if "time_period" in g.columns:
+            period = g["time_period"].iloc[0]
+        else:
+            period = ""
 
         ax.plot(
             g[mean_col],
             g["depth_meter"],
             marker="o",
             linewidth=2,
-            label=str(date)
+            label=f"{date} ({period})"
         )
 
-    style_profile(ax, var_label, f"Mean {var_label}")
+    style_profile(
+        ax,
+        var_label,
+        f"Mean {var_label}"
+    )
 
     ax.legend(
         loc="upper center",
@@ -532,5 +625,11 @@ for var_label, var_col in VALUE_COLS.items():
         mime="image/png"
     )
 
+# ------------------------------------------------
+# SUMMARY PREVIEW
+# ------------------------------------------------
 with st.expander("Preview summary"):
-    st.dataframe(summary_df, use_container_width=True)
+    st.dataframe(
+        summary_df,
+        use_container_width=True
+    )
