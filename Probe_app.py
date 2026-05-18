@@ -144,7 +144,7 @@ def process_file(uploaded_file):
     # remove moving GPS points inside each profile
     parts = []
     
-    point_radius_m = 1000
+    point_radius_m = 30
 
     for loc, g in df.groupby("location_id"):
         center_lat = g[LAT_COL].median()
