@@ -216,9 +216,11 @@ def assign_global_station_names(raw_df, mean_df, radius_m=MATCH_RADIUS_BETWEEN_D
     next_id = 1
 
     for _, r in centers.iterrows():
+
         assigned = None
 
         for s in global_stations:
+
             d = (
                 ((r["mean_lat"] - s["lat"]) * 111320) ** 2 +
                 ((r["mean_lon"] - s["lon"]) * 111320) ** 2
@@ -229,12 +231,15 @@ def assign_global_station_names(raw_df, mean_df, radius_m=MATCH_RADIUS_BETWEEN_D
                 break
 
         if assigned is None:
+
             assigned = f"Station_{next_id}"
+
             global_stations.append({
                 "name": assigned,
                 "lat": r["mean_lat"],
                 "lon": r["mean_lon"]
             })
+
             next_id += 1
 
         names[(r["file_name"], r["location_id"])] = assigned
@@ -243,12 +248,20 @@ def assign_global_station_names(raw_df, mean_df, radius_m=MATCH_RADIUS_BETWEEN_D
         lambda r: names[(r["file_name"], r["location_id"])],
         axis=1
     )
+
     raw_df["location_name"] = raw_df["station"]
 
     mean_df["station"] = mean_df.apply(
-        lambda r: "Lake mean" if r["location_id"] == -1 else names.get((r["file_name"], r["location_id"]), "Unknown"),
+        lambda r:
+            "Lake mean"
+            if r["location_id"] == -1
+            else names.get(
+                (r["file_name"], r["location_id"]),
+                "Unknown"
+            ),
         axis=1
     )
+
     mean_df["location_name"] = mean_df["station"]
 
     return raw_df, mean_df
