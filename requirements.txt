@@ -3,7 +3,5 @@ pandas
 openpyxl
 matplotlib
 folium
-shapely
-contextily
-geopandas
-xyzservices
+scikit-learn
+numpy
