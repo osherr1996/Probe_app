@@ -127,7 +127,7 @@ def process_file(uploaded_file):
     # keep valid profiles
     good = []
     for loc, g in df.groupby("location_id"):
-        if len(g) >= 10 and g[DEP_COL].max() >= 3:
+        if len(g) >= 10 and g[DEP_COL].max() >= 1:
             good.append(loc)
 
     df = df[df["location_id"].isin(good)].copy()
