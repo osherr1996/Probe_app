@@ -21,6 +21,7 @@ DEP_COL = "DEP m"
 LAT_COL = "Lat"
 LON_COL = "Lon"
 
+# Fixed parameters
 STATION_CLUSTER_RADIUS_M = 60
 MIN_CLUSTER_POINTS = 10
 MIN_PROFILE_DEPTH_M = 0.5
@@ -39,14 +40,30 @@ VALUE_COLS = {
 }
 
 BASE_COLS = [
-    DATE_COL, TIME_COL, DEP_COL, LAT_COL, LON_COL,
-    "DO %", "DO mg/L", "SPC-uS/cm", "pH", "ORP mV", "Chl ug/L", "PC ug/L"
+    DATE_COL,
+    TIME_COL,
+    DEP_COL,
+    LAT_COL,
+    LON_COL,
+    "DO %",
+    "DO mg/L",
+    "SPC-uS/cm",
+    "pH",
+    "ORP mV",
+    "Chl ug/L",
+    "PC ug/L",
 ]
 
 
 def fig_to_bytes(fig):
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=400, bbox_inches="tight", facecolor="white")
+    fig.savefig(
+        buf,
+        format="png",
+        dpi=400,
+        bbox_inches="tight",
+        facecolor="white",
+    )
     buf.seek(0)
     return buf
 
@@ -65,16 +82,34 @@ def process_file(uploaded_file):
     df = df[BASE_COLS].copy()
 
     df[DATE_COL] = pd.to_datetime(df[DATE_COL], dayfirst=True, errors="coerce")
-    df[TIME_COL] = pd.to_datetime(df[TIME_COL].astype(str), format="%H:%M:%S", errors="coerce")
+    df[TIME_COL] = pd.to_datetime(
+        df[TIME_COL].astype(str),
+        format="%H:%M:%S",
+        errors="coerce",
+    )
 
-    for col in [DEP_COL, LAT_COL, LON_COL, "DO %", "DO mg/L", "SPC-uS/cm",
-                "pH", "ORP mV", "Chl ug/L", "PC ug/L"]:
+    numeric_cols = [
+        DEP_COL,
+        LAT_COL,
+        LON_COL,
+        "DO %",
+        "DO mg/L",
+        "SPC-uS/cm",
+        "pH",
+        "ORP mV",
+        "Chl ug/L",
+        "PC ug/L",
+    ]
+
+    for col in numeric_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
     df["PC_Chl_ratio"] = df["PC ug/L"] / df["Chl ug/L"]
     df.loc[df["Chl ug/L"] == 0, "PC_Chl_ratio"] = pd.NA
 
-    df = df.dropna(subset=[DATE_COL, TIME_COL, DEP_COL, LAT_COL, LON_COL]).reset_index(drop=True)
+    df = df.dropna(
+        subset=[DATE_COL, TIME_COL, DEP_COL, LAT_COL, LON_COL]
+    ).reset_index(drop=True)
 
     if df.empty:
         raise ValueError(f"No valid rows found in {uploaded_file.name}")
@@ -87,7 +122,9 @@ def process_file(uploaded_file):
     df["start_time"] = df[TIME_COL].min().strftime("%H:%M")
     df["end_time"] = df[TIME_COL].max().strftime("%H:%M")
     df["time_range"] = df["start_time"] + " - " + df["end_time"]
-    df["datetime_label"] = df[DATE_COL].dt.strftime("%d/%m/%Y") + "  " + df["time_range"]
+    df["datetime_label"] = (
+        df[DATE_COL].dt.strftime("%d/%m/%Y") + "  " + df["time_range"]
+    )
 
     # ------------------------------------------------
     # GPS-based station clustering
@@ -101,31 +138,40 @@ def process_file(uploaded_file):
 
     clustering = DBSCAN(
         eps=STATION_CLUSTER_RADIUS_M,
-        min_samples=MIN_CLUSTER_POINTS
+        min_samples=MIN_CLUSTER_POINTS,
     ).fit(coords_m)
 
     df["location_id"] = clustering.labels_
 
-    # remove GPS noise points
+    # Remove GPS noise points
     df = df[df["location_id"] != -1].copy()
 
     if df.empty:
         raise ValueError(f"No GPS station clusters found in {uploaded_file.name}")
 
-    # keep only clusters with enough depth
-    good = []
+    # Keep only clusters with enough depth
+    good_locations = []
 
     for loc, g in df.groupby("location_id"):
-        if len(g) >= MIN_CLUSTER_POINTS and g[DEP_COL].max() >= MIN_PROFILE_DEPTH_M:
-            good.append(loc)
+        if (
+            len(g) >= MIN_CLUSTER_POINTS
+            and g[DEP_COL].max() >= MIN_PROFILE_DEPTH_M
+        ):
+            good_locations.append(loc)
 
-    df = df[df["location_id"].isin(good)].copy()
+    df = df[df["location_id"].isin(good_locations)].copy()
 
     if df.empty:
-        raise ValueError(f"No valid depth profiles found after GPS clustering in {uploaded_file.name}")
+        raise ValueError(
+            f"No valid depth profiles found after GPS clustering in {uploaded_file.name}"
+        )
 
-    # renumber stations inside file
-    old_to_new = {old: i for i, old in enumerate(sorted(df["location_id"].unique()))}
+    # Renumber stations inside file
+    old_to_new = {
+        old: i
+        for i, old in enumerate(sorted(df["location_id"].unique()))
+    }
+
     df["location_id"] = df["location_id"].map(old_to_new).astype(int)
     df["station"] = "Station_" + (df["location_id"] + 1).astype(str)
     df["location_name"] = df["station"]
@@ -136,17 +182,26 @@ def process_file(uploaded_file):
 def calculate_means(df):
     rows = []
 
-    for (file_name, date, station), g in df.groupby(["file_name", "date", "station"]):
+    # Station means
+    for (file_name, date, station), g in df.groupby(
+        ["file_name", "date", "station"]
+    ):
         loc_id = int(g["location_id"].iloc[0])
         max_depth = int(g[DEP_COL].max())
 
         for meter in range(0, max_depth + 1):
             if meter == 0:
-                w = g[(g[DEP_COL] >= 0) & (g[DEP_COL] <= 0.25)]
+                w = g[
+                    (g[DEP_COL] >= 0)
+                    & (g[DEP_COL] <= 0.25)
+                ]
             else:
-                w = g[(g[DEP_COL] >= meter - 0.25) & (g[DEP_COL] <= meter + 0.25)]
+                w = g[
+                    (g[DEP_COL] >= meter - 0.25)
+                    & (g[DEP_COL] <= meter + 0.25)
+                ]
 
-            if len(w):
+            if len(w) > 0:
                 row = {
                     "file_name": file_name,
                     "date": date,
@@ -166,16 +221,23 @@ def calculate_means(df):
 
                 rows.append(row)
 
+    # Lake mean
     for (file_name, date), g in df.groupby(["file_name", "date"]):
         max_depth = int(g[DEP_COL].max())
 
         for meter in range(0, max_depth + 1):
             if meter == 0:
-                w = g[(g[DEP_COL] >= 0) & (g[DEP_COL] <= 0.25)]
+                w = g[
+                    (g[DEP_COL] >= 0)
+                    & (g[DEP_COL] <= 0.25)
+                ]
             else:
-                w = g[(g[DEP_COL] >= meter - 0.25) & (g[DEP_COL] <= meter + 0.25)]
+                w = g[
+                    (g[DEP_COL] >= meter - 0.25)
+                    & (g[DEP_COL] <= meter + 0.25)
+                ]
 
-            if len(w):
+            if len(w) > 0:
                 row = {
                     "file_name": file_name,
                     "date": date,
@@ -199,14 +261,11 @@ def calculate_means(df):
 
 
 def assign_global_station_names(raw_df, mean_df, radius_m=MATCH_RADIUS_BETWEEN_DATES_M):
-
     centers = (
-        raw_df.groupby(
-            ["file_name", "date", "location_id"]
-        )
+        raw_df.groupby(["file_name", "date", "location_id"])
         .agg(
             mean_lat=(LAT_COL, "mean"),
-            mean_lon=(LON_COL, "mean")
+            mean_lon=(LON_COL, "mean"),
         )
         .reset_index()
     )
@@ -216,14 +275,12 @@ def assign_global_station_names(raw_df, mean_df, radius_m=MATCH_RADIUS_BETWEEN_D
     next_id = 1
 
     for _, r in centers.iterrows():
-
         assigned = None
 
         for s in global_stations:
-
             d = (
-                ((r["mean_lat"] - s["lat"]) * 111320) ** 2 +
-                ((r["mean_lon"] - s["lon"]) * 111320) ** 2
+                ((r["mean_lat"] - s["lat"]) * 111320) ** 2
+                + ((r["mean_lon"] - s["lon"]) * 111320) ** 2
             ) ** 0.5
 
             if d <= radius_m:
@@ -231,35 +288,32 @@ def assign_global_station_names(raw_df, mean_df, radius_m=MATCH_RADIUS_BETWEEN_D
                 break
 
         if assigned is None:
-
             assigned = f"Station_{next_id}"
-
-            global_stations.append({
-                "name": assigned,
-                "lat": r["mean_lat"],
-                "lon": r["mean_lon"]
-            })
-
+            global_stations.append(
+                {
+                    "name": assigned,
+                    "lat": r["mean_lat"],
+                    "lon": r["mean_lon"],
+                }
+            )
             next_id += 1
 
         names[(r["file_name"], r["location_id"])] = assigned
 
     raw_df["station"] = raw_df.apply(
         lambda r: names[(r["file_name"], r["location_id"])],
-        axis=1
+        axis=1,
     )
 
     raw_df["location_name"] = raw_df["station"]
 
     mean_df["station"] = mean_df.apply(
-        lambda r:
+        lambda r: (
             "Lake mean"
             if r["location_id"] == -1
-            else names.get(
-                (r["file_name"], r["location_id"]),
-                "Unknown"
-            ),
-        axis=1
+            else names.get((r["file_name"], r["location_id"]), "Unknown")
+        ),
+        axis=1,
     )
 
     mean_df["location_name"] = mean_df["station"]
@@ -281,16 +335,35 @@ def style_profile(ax, title, xlabel):
 
 
 def plot_all_variables_for_file(raw_file, mean_file, file_name):
-    fig, axes = plt.subplots(1, len(VALUE_COLS), figsize=(30, 5), sharey=False)
+    fig, axes = plt.subplots(
+        1,
+        len(VALUE_COLS),
+        figsize=(30, 5),
+        sharey=False,
+    )
 
     for ax, (label, col) in zip(axes, VALUE_COLS.items()):
         mean_col = f"mean_{col}"
 
         for station, g in raw_file.groupby("station"):
-            ax.scatter(g[col], g[DEP_COL], s=14, alpha=0.20)
+            ax.scatter(
+                g[col],
+                g[DEP_COL],
+                s=14,
+                alpha=0.20,
+            )
 
-            mg = mean_file[mean_file["station"] == station].sort_values("depth_meter")
-            ax.plot(mg[mean_col], mg["depth_meter"], marker="o", linewidth=2, label=station)
+            mg = mean_file[
+                mean_file["station"] == station
+            ].sort_values("depth_meter")
+
+            ax.plot(
+                mg[mean_col],
+                mg["depth_meter"],
+                marker="o",
+                linewidth=2,
+                label=station,
+            )
 
         style_profile(ax, label, label)
 
@@ -298,7 +371,7 @@ def plot_all_variables_for_file(raw_file, mean_file, file_name):
         loc="upper center",
         bbox_to_anchor=(3.7, -0.18),
         ncol=5,
-        frameon=False
+        frameon=False,
     )
 
     time_label = raw_file["datetime_label"].iloc[0]
@@ -307,33 +380,50 @@ def plot_all_variables_for_file(raw_file, mean_file, file_name):
         f"{file_name}\n{time_label}",
         fontsize=16,
         fontweight="bold",
-        y=0.98
+        y=0.98,
     )
 
-    fig.subplots_adjust(bottom=0.25, top=0.72, wspace=0.35)
+    fig.subplots_adjust(
+        bottom=0.25,
+        top=0.72,
+        wspace=0.35,
+    )
 
     return fig
 
 
 def plot_comparison(mean_df):
-    lake = mean_df[mean_df["station"] == "Lake mean"]
+    lake = mean_df[
+        mean_df["station"] == "Lake mean"
+    ]
 
-    fig, axes = plt.subplots(1, len(VALUE_COLS), figsize=(30, 5), sharey=False)
+    fig, axes = plt.subplots(
+        1,
+        len(VALUE_COLS),
+        figsize=(30, 5),
+        sharey=False,
+    )
 
     for ax, (label, col) in zip(axes, VALUE_COLS.items()):
         mean_col = f"mean_{col}"
 
         for key, g in lake.groupby(["date", "file_name"]):
             date, file_name = key
+
             g = g.sort_values("depth_meter")
-            time_range = g["time_range"].iloc[0] if "time_range" in g.columns else ""
+
+            time_range = (
+                g["time_range"].iloc[0]
+                if "time_range" in g.columns
+                else ""
+            )
 
             ax.plot(
                 g[mean_col],
                 g["depth_meter"],
                 marker="o",
                 linewidth=2,
-                label=f"{date} ({time_range})"
+                label=f"{date} ({time_range})",
             )
 
         style_profile(ax, label, f"Mean {label}")
@@ -342,29 +432,53 @@ def plot_comparison(mean_df):
         loc="upper center",
         bbox_to_anchor=(3.7, -0.18),
         ncol=4,
-        frameon=False
+        frameon=False,
     )
 
-    fig.suptitle("Lake Mean Comparison Between Data", fontsize=16, fontweight="bold")
-    fig.subplots_adjust(bottom=0.25, top=0.85)
+    fig.suptitle(
+        "Lake Mean Comparison Between Data",
+        fontsize=16,
+        fontweight="bold",
+    )
+
+    fig.subplots_adjust(
+        bottom=0.25,
+        top=0.85,
+    )
 
     return fig
 
 
 def create_map(df_file, zoom=MAP_ZOOM):
     m = folium.Map(
-        location=[df_file[LAT_COL].mean(), df_file[LON_COL].mean()],
+        location=[
+            df_file[LAT_COL].mean(),
+            df_file[LON_COL].mean(),
+        ],
         zoom_start=zoom,
-        tiles="Esri.WorldImagery"
+        tiles="Esri.WorldImagery",
     )
 
-    colors = ["blue", "red", "green", "purple", "orange", "black", "cadetblue"]
+    colors = [
+        "blue",
+        "red",
+        "green",
+        "purple",
+        "orange",
+        "black",
+        "cadetblue",
+        "darkred",
+        "pink",
+    ]
 
     for i, (station, g) in enumerate(df_file.groupby("station")):
         color = colors[i % len(colors)]
 
         folium.Marker(
-            location=[g[LAT_COL].mean(), g[LON_COL].mean()],
+            location=[
+                g[LAT_COL].mean(),
+                g[LON_COL].mean(),
+            ],
             icon=folium.DivIcon(
                 html=f"""
                 <div style="
@@ -379,12 +493,15 @@ def create_map(df_file, zoom=MAP_ZOOM):
                     {station}
                 </div>
                 """
-            )
+            ),
         ).add_to(m)
 
         for _, r in g.iterrows():
             folium.CircleMarker(
-                location=[r[LAT_COL], r[LON_COL]],
+                location=[
+                    r[LAT_COL],
+                    r[LON_COL],
+                ],
                 radius=4,
                 color=color,
                 fill=True,
@@ -402,7 +519,7 @@ def create_map(df_file, zoom=MAP_ZOOM):
                     f"Chl: {r['Chl ug/L']:.2f}<br>"
                     f"PC: {r['PC ug/L']:.2f}<br>"
                     f"PC/Chl: {r['PC_Chl_ratio']:.3f}<br>"
-                )
+                ),
             ).add_to(m)
 
     return m
@@ -410,4 +527,198 @@ def create_map(df_file, zoom=MAP_ZOOM):
 
 def make_summary(raw_df):
     return (
-        raw_df.groupby(["
+        raw_df.groupby(["date", "file_name", "station"])
+        .agg(
+            time_range=("time_range", "first"),
+            datetime_label=("datetime_label", "first"),
+            n_points=(DEP_COL, "count"),
+            max_depth_m=(DEP_COL, "max"),
+            mean_DO_percent=("DO %", "mean"),
+            mean_DO_mg_L=("DO mg/L", "mean"),
+            mean_SPC_uS_cm=("SPC-uS/cm", "mean"),
+            mean_pH=("pH", "mean"),
+            mean_ORP_mV=("ORP mV", "mean"),
+            mean_Chl_ug_L=("Chl ug/L", "mean"),
+            mean_PC_ug_L=("PC ug/L", "mean"),
+            mean_PC_Chl_ratio=("PC_Chl_ratio", "mean"),
+            mean_lat=(LAT_COL, "mean"),
+            mean_lon=(LON_COL, "mean"),
+        )
+        .reset_index()
+        .round(3)
+    )
+
+
+uploaded_files = st.sidebar.file_uploader(
+    "Upload Excel files",
+    type=["xlsx", "xls"],
+    accept_multiple_files=True,
+)
+
+if not uploaded_files:
+    st.info("Upload Excel files to start.")
+    st.stop()
+
+raw_parts = []
+errors = []
+
+for f in uploaded_files:
+    try:
+        raw_parts.append(process_file(f))
+    except Exception as e:
+        errors.append(f"{f.name}: {e}")
+
+if errors:
+    st.error("\n".join(errors))
+    st.stop()
+
+raw_df = pd.concat(raw_parts, ignore_index=True)
+
+mean_df = calculate_means(raw_df)
+
+raw_df, mean_df = assign_global_station_names(
+    raw_df,
+    mean_df,
+    radius_m=MATCH_RADIUS_BETWEEN_DATES_M,
+)
+
+summary_df = make_summary(raw_df)
+
+file_options = sorted(raw_df["file_name"].unique())
+
+selected_file = st.sidebar.selectbox(
+    "Choose data",
+    file_options,
+)
+
+df_file = raw_df[
+    raw_df["file_name"] == selected_file
+]
+
+mean_file = mean_df[
+    (mean_df["file_name"] == selected_file)
+    & (mean_df["station"] != "Lake mean")
+]
+
+st.header(f"Data: {selected_file}")
+
+time_label = df_file["datetime_label"].iloc[0]
+
+st.markdown(
+    f"### Sampling Time: `{time_label}`"
+)
+
+fig_data = plot_all_variables_for_file(
+    df_file,
+    mean_file,
+    selected_file,
+)
+
+st.pyplot(fig_data)
+
+st.download_button(
+    "Download all-variable station plot",
+    fig_to_bytes(fig_data),
+    file_name=f"{clean_filename(selected_file)}_all_variables_by_station.png",
+    mime="image/png",
+)
+
+st.subheader("Map by Station")
+
+m = create_map(
+    df_file,
+    zoom=MAP_ZOOM,
+)
+
+map_html = m.get_root().render()
+
+components.html(
+    map_html,
+    height=600,
+    scrolling=True,
+)
+
+st.download_button(
+    "Download interactive map",
+    map_html.encode("utf-8"),
+    file_name=f"{clean_filename(selected_file)}_map.html",
+    mime="text/html",
+)
+
+st.header("Comparison Panel")
+
+fig_compare = plot_comparison(mean_df)
+
+st.pyplot(fig_compare)
+
+st.download_button(
+    "Download comparison plot",
+    fig_to_bytes(fig_compare),
+    file_name="lake_mean_comparison_all_variables.png",
+    mime="image/png",
+)
+
+st.download_button(
+    "Download summary CSV",
+    summary_df.to_csv(index=False).encode("utf-8"),
+    file_name="summary_by_station_between_data.csv",
+    mime="text/csv",
+)
+
+st.subheader("Download Mean Comparison per Variable")
+
+for var_label, var_col in VALUE_COLS.items():
+    lake = mean_df[
+        mean_df["station"] == "Lake mean"
+    ]
+
+    mean_col = f"mean_{var_col}"
+
+    fig_one, ax = plt.subplots(figsize=(7, 6))
+
+    for key, g in lake.groupby(["date", "file_name"]):
+        date, file_name = key
+
+        g = g.sort_values("depth_meter")
+
+        time_range = (
+            g["time_range"].iloc[0]
+            if "time_range" in g.columns
+            else ""
+        )
+
+        ax.plot(
+            g[mean_col],
+            g["depth_meter"],
+            marker="o",
+            linewidth=2,
+            label=f"{date} ({time_range})",
+        )
+
+    style_profile(
+        ax,
+        var_label,
+        f"Mean {var_label}",
+    )
+
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.16),
+        ncol=3,
+        frameon=False,
+    )
+
+    fig_one.subplots_adjust(bottom=0.22)
+
+    st.download_button(
+        f"Download mean comparison plot - {var_label}",
+        fig_to_bytes(fig_one),
+        file_name=f"mean_comparison_{clean_filename(var_label)}.png",
+        mime="image/png",
+    )
+
+with st.expander("Preview summary"):
+    st.dataframe(
+        summary_df,
+        use_container_width=True,
+    )
