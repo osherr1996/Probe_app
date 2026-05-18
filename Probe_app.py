@@ -127,7 +127,7 @@ def process_file(uploaded_file):
     # keep valid profiles
     good = []
     for loc, g in df.groupby("location_id"):
-        if len(g) >= 10 and g[DEP_COL].max() >= 1:
+        if len(g) >= 10 and g[DEP_COL].max() >= 2:
             good.append(loc)
 
     df = df[df["location_id"].isin(good)].copy()
@@ -137,7 +137,7 @@ def process_file(uploaded_file):
 
     # remove moving GPS points inside each profile
     parts = []
-    point_radius_m = 1000
+    point_radius_m = 30
 
     for loc, g in df.groupby("location_id"):
         center_lat = g[LAT_COL].median()
