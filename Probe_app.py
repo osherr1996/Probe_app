@@ -199,9 +199,15 @@ def calculate_means(df):
 
 
 def assign_global_station_names(raw_df, mean_df, radius_m=MATCH_RADIUS_BETWEEN_DATES_M):
+
     centers = (
-        raw_df.groupby(["file_name", "date", "location_id"])
-        .agg(mean_lat=(LAT_COL, "mean"), mean_lon=(LON_COL, "mean"))
+        raw_df.groupby(
+            ["file_name", "date", "location_id"]
+        )
+        .agg(
+            mean_lat=(LAT_COL, "mean"),
+            mean_lon=(LON_COL, "mean")
+        )
         .reset_index()
     )
 
