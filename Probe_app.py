@@ -125,9 +125,15 @@ def process_file(uploaded_file):
     df["location_id"] = ids
 
     # keep valid profiles
+    # keep valid profiles
     good = []
+    
     for loc, g in df.groupby("location_id"):
-        if len(g) >= 10 and g[DEP_COL].max() >= 2:
+    
+        if (
+            len(g) >= 10
+            and g[DEP_COL].max() >= 0.5
+        ):
             good.append(loc)
 
     df = df[df["location_id"].isin(good)].copy()
@@ -137,7 +143,8 @@ def process_file(uploaded_file):
 
     # remove moving GPS points inside each profile
     parts = []
-    point_radius_m = 30
+    
+    point_radius_m = 1000
 
     for loc, g in df.groupby("location_id"):
         center_lat = g[LAT_COL].median()
@@ -151,7 +158,10 @@ def process_file(uploaded_file):
         g["dist_from_station_center_m"] = dist_m
         g = g[g["dist_from_station_center_m"] <= point_radius_m]
 
-        if len(g) >= 10 and g[DEP_COL].max() >= 3:
+        if (
+            len(g) >= 10
+            and g[DEP_COL].max() >= 0.5
+        ):
             parts.append(g)
 
     if not parts:
@@ -452,13 +462,8 @@ uploaded_files = st.sidebar.file_uploader(
     accept_multiple_files=True
 )
 
-map_zoom = st.sidebar.slider("Map zoom", 10, 20, 15)
-match_radius = st.sidebar.slider(
-    "Match station between data (meters)",
-    10,
-    100,
-    40
-)
+map_zoom = 15
+match_radius = 40
 
 if not uploaded_files:
     st.info("Upload Excel files to start.")
