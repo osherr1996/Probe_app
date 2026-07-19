@@ -397,19 +397,22 @@ def plot_comparison(mean_df):
         mean_df["station"] == "Lake mean"
     ]
 
+    ncols = 4
+    nrows = 2
+
     fig, axes = plt.subplots(
-        1,
-        len(VALUE_COLS),
-        figsize=(30, 5),
+        nrows,
+        ncols,
+        figsize=(18, 10),
         sharey=False,
     )
+
+    axes = axes.flatten()
 
     for ax, (label, col) in zip(axes, VALUE_COLS.items()):
         mean_col = f"mean_{col}"
 
-        for key, g in lake.groupby(["date", "file_name"]):
-            date, file_name = key
-
+        for (date, file_name), g in lake.groupby(["date", "file_name"]):
             g = g.sort_values("depth_meter")
 
             time_range = (
@@ -428,9 +431,18 @@ def plot_comparison(mean_df):
 
         style_profile(ax, label, f"Mean {label}")
 
-    axes[0].legend(
-        loc="upper center",
-        bbox_to_anchor=(3.7, -0.18),
+    # Hide unused subplots (if there are fewer than 8 variables)
+    for ax in axes[len(VALUE_COLS):]:
+        ax.axis("off")
+
+    # Single legend below all plots
+    handles, labels = axes[0].get_legend_handles_labels()
+
+    fig.legend(
+        handles,
+        labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.02),
         ncol=4,
         frameon=False,
     )
@@ -442,8 +454,12 @@ def plot_comparison(mean_df):
     )
 
     fig.subplots_adjust(
-        bottom=0.25,
-        top=0.85,
+        left=0.06,
+        right=0.98,
+        top=0.90,
+        bottom=0.12,
+        wspace=0.35,
+        hspace=0.40,
     )
 
     return fig
