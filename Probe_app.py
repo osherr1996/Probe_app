@@ -73,18 +73,18 @@ def clean_filename(name):
 
 def get_site_name(filename):
     stem = Path(filename).stem
-
     parts = stem.split("_")
 
-    # Remove leading YYYYMMDD
+    # Remove leading date, e.g. 20260715
     if parts and parts[0].isdigit() and len(parts[0]) == 8:
         parts = parts[1:]
 
-    # Remove optional AM/PM indicator
+    # Remove optional AM/PM
     if parts and parts[0].upper() in {"AM", "PM"}:
         parts = parts[1:]
 
-    return "_".join(parts)
+    # Return only the first part after the date
+    return parts[0] if parts else stem
     
 def process_file(uploaded_file):
     df = pd.read_excel(uploaded_file)
@@ -491,14 +491,15 @@ def plot_comparison(mean_df):
 
     # Single legend below all plots
     handles, labels = axes[0].get_legend_handles_labels()
-
+    
     fig.legend(
         handles,
         labels,
         loc="lower center",
-        bbox_to_anchor=(0.5, 0.02),
-        ncol=4,
+        bbox_to_anchor=(0.5, -0.01),
+        ncol=3,
         frameon=False,
+        fontsize=9,
     )
 
     site_name = lake["site_name"].iloc[0]
@@ -512,10 +513,10 @@ def plot_comparison(mean_df):
     fig.subplots_adjust(
         left=0.06,
         right=0.98,
-        top=0.90,
-        bottom=0.12,
+        top=0.88,
+        bottom=0.22,
         wspace=0.35,
-        hspace=0.40,
+        hspace=0.45,
     )
 
     return fig
