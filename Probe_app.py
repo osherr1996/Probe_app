@@ -74,13 +74,17 @@ def clean_filename(name):
 def get_site_name(filename):
     stem = Path(filename).stem
 
-    # Remove the leading date (YYYYMMDD_)
-    parts = stem.split("_", 1)
+    parts = stem.split("_")
 
-    if len(parts) == 2:
-        return parts[1]
+    # Remove leading YYYYMMDD
+    if parts and parts[0].isdigit() and len(parts[0]) == 8:
+        parts = parts[1:]
 
-    return stem
+    # Remove optional AM/PM indicator
+    if parts and parts[0].upper() in {"AM", "PM"}:
+        parts = parts[1:]
+
+    return "_".join(parts)
     
 def process_file(uploaded_file):
     df = pd.read_excel(uploaded_file)
@@ -129,15 +133,19 @@ def process_file(uploaded_file):
     
     df["file_name"] = file_name
     df["site_name"] = site_name
-
+    
+    df["date"] = df[DATE_COL].dt.date.astype(str)
+    
     df["time_str"] = df[TIME_COL].dt.strftime("%H:%M:%S")
     df["start_time"] = df[TIME_COL].min().strftime("%H:%M")
     df["end_time"] = df[TIME_COL].max().strftime("%H:%M")
     df["time_range"] = df["start_time"] + " - " + df["end_time"]
+    
     df["datetime_label"] = (
-        df[DATE_COL].dt.strftime("%d/%m/%Y") + "  " + df["time_range"]
+        df[DATE_COL].dt.strftime("%d/%m/%Y")
+        + "  "
+        + df["time_range"]
     )
-
     # ------------------------------------------------
     # GPS-based station clustering
     # ------------------------------------------------
