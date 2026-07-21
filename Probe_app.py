@@ -254,6 +254,7 @@ def calculate_means(df):
             if len(w) > 0:
                 row = {
                     "file_name": file_name,
+                    "site_name": g["site_name"].iloc[0],
                     "date": date,
                     "station": station,
                     "location_name": station,
@@ -290,6 +291,7 @@ def calculate_means(df):
             if len(w) > 0:
                 row = {
                     "file_name": file_name,
+                    "site_name": g["site_name"].iloc[0],
                     "date": date,
                     "station": "Lake mean",
                     "location_name": "Lake mean",
@@ -599,6 +601,7 @@ def make_summary(raw_df):
     return (
         raw_df.groupby(["date", "file_name", "station"])
         .agg(
+            site_name=("site_name", "first"),
             time_range=("time_range", "first"),
             datetime_label=("datetime_label", "first"),
             n_points=(DEP_COL, "count"),
