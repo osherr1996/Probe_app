@@ -30,7 +30,7 @@ MAP_ZOOM = 15
 
 VALUE_COLS = {
     "DO %": "DO %",
-    "DO mg/L": "DO mg/L",
+    "Temperature (°C)": "°C",
     "SPC-uS/cm": "SPC-uS/cm",
     "pH": "pH",
     "ORP mV": "ORP mV",
@@ -46,7 +46,7 @@ BASE_COLS = [
     LAT_COL,
     LON_COL,
     "DO %",
-    "DO mg/L",
+    "°C",
     "SPC-uS/cm",
     "pH",
     "ORP mV",
@@ -93,7 +93,7 @@ def process_file(uploaded_file):
         LAT_COL,
         LON_COL,
         "DO %",
-        "DO mg/L",
+        "°C",
         "SPC-uS/cm",
         "pH",
         "ORP mV",
@@ -528,7 +528,7 @@ def create_map(df_file, zoom=MAP_ZOOM):
                     f"Station: {r['station']}<br>"
                     f"Depth: {r[DEP_COL]:.2f} m<br>"
                     f"DO %: {r['DO %']:.2f}<br>"
-                    f"DO mg/L: {r['DO mg/L']:.2f}<br>"
+                    f"Temperature: {r['°C']:.1f} °C<br>"
                     f"SPC: {r['SPC-uS/cm']:.2f} uS/cm<br>"
                     f"pH: {r['pH']:.2f}<br>"
                     f"ORP: {r['ORP mV']:.2f} mV<br>"
@@ -550,7 +550,7 @@ def make_summary(raw_df):
             n_points=(DEP_COL, "count"),
             max_depth_m=(DEP_COL, "max"),
             mean_DO_percent=("DO %", "mean"),
-            mean_DO_mg_L=("DO mg/L", "mean"),
+            mean_temperature_C=("°C", "mean"),
             mean_SPC_uS_cm=("SPC-uS/cm", "mean"),
             mean_pH=("pH", "mean"),
             mean_ORP_mV=("ORP mV", "mean"),
