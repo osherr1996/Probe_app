@@ -71,7 +71,17 @@ def fig_to_bytes(fig):
 def clean_filename(name):
     return str(name).replace("/", "_").replace("\\", "_").replace(" ", "_")
 
+def get_site_name(filename):
+    stem = Path(filename).stem
 
+    # Remove the leading date (YYYYMMDD_)
+    parts = stem.split("_", 1)
+
+    if len(parts) == 2:
+        return parts[1]
+
+    return stem
+    
 def process_file(uploaded_file):
     df = pd.read_excel(uploaded_file)
 
@@ -115,8 +125,10 @@ def process_file(uploaded_file):
         raise ValueError(f"No valid rows found in {uploaded_file.name}")
 
     file_name = Path(uploaded_file.name).stem
+    site_name = get_site_name(uploaded_file.name)
+    
     df["file_name"] = file_name
-    df["date"] = df[DATE_COL].dt.date.astype(str)
+    df["site_name"] = site_name
 
     df["time_str"] = df[TIME_COL].dt.strftime("%H:%M:%S")
     df["start_time"] = df[TIME_COL].min().strftime("%H:%M")
@@ -375,9 +387,11 @@ def plot_all_variables_for_file(raw_file, mean_file, file_name):
     )
 
     time_label = raw_file["datetime_label"].iloc[0]
-
+    
+    site_name = raw_file["site_name"].iloc[0]
+    
     fig.suptitle(
-        f"{file_name}\n{time_label}",
+        f"{site_name}\n{time_label}",
         fontsize=16,
         fontweight="bold",
         y=0.98,
@@ -447,8 +461,10 @@ def plot_comparison(mean_df):
         frameon=False,
     )
 
+    site_name = lake["site_name"].iloc[0]
+    
     fig.suptitle(
-        "Lake Mean Comparison Between Data",
+        f"{site_name}\nLake Mean Comparison Between Dates",
         fontsize=16,
         fontweight="bold",
     )
@@ -616,7 +632,8 @@ mean_file = mean_df[
     & (mean_df["station"] != "Lake mean")
 ]
 
-st.header(f"Data: {selected_file}")
+site_name = df_file["site_name"].iloc[0]
+st.header(site_name)
 
 time_label = df_file["datetime_label"].iloc[0]
 
