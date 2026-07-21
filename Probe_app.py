@@ -457,10 +457,9 @@ def plot_comparison(mean_df):
     fig, axes = plt.subplots(
         nrows,
         ncols,
-        figsize=(18, 10),
+        figsize=(16, 9),
         sharey=False,
     )
-
     axes = axes.flatten()
 
     for ax, (label, col) in zip(axes, VALUE_COLS.items()):
@@ -496,7 +495,7 @@ def plot_comparison(mean_df):
         handles,
         labels,
         loc="lower center",
-        bbox_to_anchor=(0.5, -0.01),
+        bbox_to_anchor=(0.5, 0.045),
         ncol=3,
         frameon=False,
         fontsize=9,
@@ -514,9 +513,9 @@ def plot_comparison(mean_df):
         left=0.06,
         right=0.98,
         top=0.88,
-        bottom=0.22,
-        wspace=0.35,
-        hspace=0.45,
+        bottom=0.15,
+        wspace=0.30,
+        hspace=0.35,
     )
 
     return fig
