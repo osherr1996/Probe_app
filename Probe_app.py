@@ -181,13 +181,43 @@ def process_file(uploaded_file):
     # Renumber stations inside file
     old_to_new = {
         old: i
-        for i, old in enumerate(sorted(df["location_id"].unique()))
+        for i, old in enumerate(
+            sorted(df["location_id"].unique())
+        )
     }
-
-    df["location_id"] = df["location_id"].map(old_to_new).astype(int)
-    df["station"] = "Station_" + (df["location_id"] + 1).astype(str)
+    
+    df["location_id"] = (
+        df["location_id"]
+        .map(old_to_new)
+        .astype(int)
+    )
+    
+    df["station"] = (
+        "Station_"
+        + (df["location_id"] + 1).astype(str)
+    )
+    
     df["location_name"] = df["station"]
-
+    
+    required_output_columns = [
+        "file_name",
+        "site_name",
+        "date",
+        "station",
+    ]
+    
+    missing_output_columns = [
+        column
+        for column in required_output_columns
+        if column not in df.columns
+    ]
+    
+    if missing_output_columns:
+        raise ValueError(
+            f"Internal processing error in {uploaded_file.name}: "
+            f"missing generated columns {missing_output_columns}"
+        )
+    
     return df
 
 
