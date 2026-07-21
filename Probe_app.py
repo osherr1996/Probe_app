@@ -495,7 +495,7 @@ def plot_comparison(mean_df):
         handles,
         labels,
         loc="lower center",
-        bbox_to_anchor=(0.5, 0.045),
+        bbox_to_anchor=(0.5, 0.00),
         ncol=3,
         frameon=False,
         fontsize=9,
